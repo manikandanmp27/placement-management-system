@@ -19,7 +19,8 @@ public class Job {
     private String jobTitle;
 
     private String jobType;
-    private Double package;
+    @Column(name = "package")
+    private Double packageAmount;
 
     @Column(name = "min_cgpa")
     private Double minCgpa;
@@ -66,12 +67,12 @@ public class Job {
         this.jobType = jobType;
     }
 
-    public Double getPackage() {
-        return package;
+    public Double getPackageAmount() {
+        return packageAmount;
     }
 
-    public void setPackage(Double packageValue) {
-        this.package = packageValue;
+    public void setPackageAmount(Double packageAmount) {
+        this.packageAmount = packageAmount;
     }
 
     public Double getMinCgpa() {

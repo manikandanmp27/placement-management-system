@@ -26,7 +26,8 @@ public class Placement {
     @Column(name = "placement_date", nullable = false)
     private LocalDate placementDate;
 
-    private Double package;
+    @Column(name = "package")
+    private Double packageAmount;
 
     @Column(name = "joining_date")
     private LocalDate joiningDate;
@@ -71,12 +72,12 @@ public class Placement {
         this.placementDate = placementDate;
     }
 
-    public Double getPackage() {
-        return package;
+    public Double getPackageAmount() {
+        return packageAmount;
     }
 
-    public void setPackage(Double packageValue) {
-        this.package = packageValue;
+    public void setPackageAmount(Double packageAmount) {
+        this.packageAmount = packageAmount;
     }
 
     public LocalDate getJoiningDate() {
