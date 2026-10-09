@@ -23,6 +23,11 @@ public class PlacementProcedureController {
             @RequestParam Integer studentId,
             @RequestParam Integer jobId) {
 
+        if (studentId <= 0 || jobId <= 0) {
+            return ResponseEntity.badRequest()
+                    .body("Student ID and Job ID must be positive.");
+        }
+
         procedureService.applyForJob(studentId, jobId);
         return ResponseEntity.ok("Application submitted successfully");
     }
