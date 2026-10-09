@@ -7,6 +7,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import org.springframework.web.bind.MissingServletRequestParameterException;
+
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -32,5 +34,13 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body("An unexpected error occurred.");
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<String> handleMissingParameter(
+            MissingServletRequestParameterException exception) {
+
+        return ResponseEntity.badRequest()
+                .body("Missing required parameter: " + exception.getParameterName());
     }
 }
