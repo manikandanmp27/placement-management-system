@@ -31,4 +31,7 @@ backend/src/main/resources/application.properties
 
 .vscode/
 
+<<<<<<< HEAD
 backend/src/main/resources/application.properties
+=======
+>>>>>>> 59918622c3a74435756edee04f147dfd20a23c28
