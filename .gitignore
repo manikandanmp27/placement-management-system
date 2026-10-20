@@ -23,15 +23,24 @@
 hs_err_pid*
 replay_pid*
 
-# Local database credentials
-backend/src/main/resources/application.properties
+# Local and environment secrets
+.env
+.env.*
+!.env.example
+*.env
+application-local.properties
+backend/src/main/resources/application-local.properties
+
+# Build output
+target/
+backend/target/
+frontend/dist/
 
 # IntelliJ IDEA
 .idea/
+*.iml
 
+# VS Code
 .vscode/
 
-<<<<<<< HEAD
-backend/src/main/resources/application.properties
-=======
->>>>>>> 59918622c3a74435756edee04f147dfd20a23c28
+DECISION.md

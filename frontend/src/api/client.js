@@ -64,7 +64,7 @@ async function request(endpoint, options = {}) {
     return data;
   } catch (error) {
     if (error.name === 'TypeError' && error.message.includes('fetch')) {
-      const netError = new Error('Unable to connect to the backend server. Please verify Spring Boot is running on http://localhost:8080.');
+      const netError = new Error(`Unable to connect to backend API (${API_BASE_URL}). If your backend is hosted on a free tier (e.g. Render), it may take 30-60 seconds to spin up from sleep. Please wait a moment and try again.`);
       netError.status = 0;
       throw netError;
     }
