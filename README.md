@@ -4,6 +4,10 @@ A full-stack enterprise campus placement management platform built with **Spring
 
 ---
 
+## 🚀 Live Demo
+
+- 🌐 **Live Website:** https://placement-management-system-kappa.vercel.app/ 
+
 ## Architecture Overview
 
 ```mermaid
