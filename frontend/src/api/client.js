@@ -34,18 +34,17 @@ async function request(endpoint, options = {}) {
       ...restOptions,
     });
 
-    const contentType = response.headers.get('content-type') || '';
+    const text = await response.text();
     let data;
 
-    if (contentType.includes('application/json')) {
-      data = await response.json();
-    } else {
-      const text = await response.text();
+    if (text) {
       try {
-        data = text ? JSON.parse(text) : null;
+        data = JSON.parse(text);
       } catch {
         data = text;
       }
+    } else {
+      data = null;
     }
 
     if (!response.ok) {

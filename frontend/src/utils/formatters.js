@@ -7,7 +7,7 @@ export function formatSalary(amount, showLPA = true) {
   
   if (showLPA && num >= 100000) {
     const lpa = (num / 100000).toFixed(2);
-    return `???${parseFloat(lpa)} LPA`;
+    return `₹${parseFloat(lpa)} LPA`;
   }
   
   return new Intl.NumberFormat('en-IN', {
