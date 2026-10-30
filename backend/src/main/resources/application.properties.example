@@ -12,6 +12,13 @@ spring.jpa.show-sql=false
 
 cors.allowed-origins=http://localhost:5173
  
-# JWT Security Configuration (Configure a 256-bit secret via environment variable JWT_SECRET)
-jwt.secret=${JWT_SECRET:your-256-bit-secret-key-at-least-32-bytes-long}
+# JWT Security Configuration
+# The JWT secret MUST be supplied via the JWT_SECRET environment variable (minimum 256 bits / 32 bytes).
+# Generate a cryptographically secure key:
+#   Windows PowerShell:
+#     $env:JWT_SECRET = [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Minimum 0 -Maximum 256 }))
+#   Linux / macOS:
+#     export JWT_SECRET=$(openssl rand -base64 32)
+# Application startup will fail if JWT_SECRET is missing, blank, or shorter than 256 bits.
+jwt.secret=${JWT_SECRET:}
 jwt.expiration-ms=${JWT_EXPIRATION_MS:86400000}

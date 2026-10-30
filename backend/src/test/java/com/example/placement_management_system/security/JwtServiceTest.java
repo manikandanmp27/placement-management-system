@@ -33,7 +33,7 @@ class JwtServiceTest {
     }
 
     @Test
-    @DisplayName("2. Successful extraction of email, user ID and role")
+    @DisplayName("2. Successful extraction of email, user ID, role, and student ID")
     void testExtractionOfClaims() {
         String token = jwtService.generateToken("officer@example.com", 42, Role.ROLE_PLACEMENT_OFFICER, null);
 
@@ -88,9 +88,48 @@ class JwtServiceTest {
     }
 
     @Test
-    @DisplayName("7. Rejection of secret shorter than 256 bits (32 bytes)")
-    void testRejectionOfWeakSecret() {
-        JwtService weakJwtService = new JwtService("short-secret-key", EXPIRATION_MS);
-        assertThrows(IllegalArgumentException.class, weakJwtService::getSigningKey);
+    @DisplayName("7. Startup failure when secret is null")
+    void testStartupFailsOnNullSecret() {
+        IllegalStateException exception = assertThrows(IllegalStateException.class, () -> new JwtService(null, EXPIRATION_MS));
+        assertTrue(exception.getMessage().contains("JWT secret is not configured"));
+    }
+
+    @Test
+    @DisplayName("8. Startup failure when secret is empty or blank")
+    void testStartupFailsOnEmptyOrBlankSecret() {
+        IllegalStateException emptyEx = assertThrows(IllegalStateException.class, () -> new JwtService("", EXPIRATION_MS));
+        assertTrue(emptyEx.getMessage().contains("JWT secret is not configured"));
+
+        IllegalStateException blankEx = assertThrows(IllegalStateException.class, () -> new JwtService("   ", EXPIRATION_MS));
+        assertTrue(blankEx.getMessage().contains("JWT secret is not configured"));
+    }
+
+    @Test
+    @DisplayName("9. Startup failure when secret is shorter than 256 bits (32 bytes)")
+    void testStartupFailsOnWeakSecret() {
+        String weakSecret = "short-key-under-32-bytes";
+        IllegalStateException exception = assertThrows(IllegalStateException.class, () -> new JwtService(weakSecret, EXPIRATION_MS));
+        assertTrue(exception.getMessage().contains("JWT secret is too weak"));
+        assertTrue(exception.getMessage().contains("at least 256 bits"));
+    }
+
+    @Test
+    @DisplayName("10. Verification that exception message does not leak the secret content")
+    void testExceptionMessageDoesNotLeakSecret() {
+        String sensitiveSecret = "my-private-unleaked-secret";
+        IllegalStateException exception = assertThrows(IllegalStateException.class, () -> new JwtService(sensitiveSecret, EXPIRATION_MS));
+        assertFalse(exception.getMessage().contains(sensitiveSecret), "Exception message must never contain the sensitive secret content");
+    }
+
+    @Test
+    @DisplayName("11. Successful initialization with Base64-encoded 256-bit secret")
+    void testStartupWithBase64Secret() {
+        // Base64 encoding of 32 bytes (256 bits)
+        String base64Secret = "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=";
+        JwtService b64JwtService = new JwtService(base64Secret, EXPIRATION_MS);
+        assertNotNull(b64JwtService.getSigningKey());
+
+        String token = b64JwtService.generateToken("user@example.com", 1, Role.ROLE_STUDENT, null);
+        assertTrue(b64JwtService.validateToken(token));
     }
 }

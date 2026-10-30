@@ -21,7 +21,10 @@ import java.util.function.Function;
 
 /**
  * Service for issuing, parsing, and cryptographically validating HMAC-SHA256 (HS256) JWT tokens.
- * Complies with strict security standards: never logs secrets or full tokens.
+ * Hardened security:
+ * - Fails fast at startup if JWT secret is missing, blank, or shorter than 256 bits (32 bytes).
+ * - Never logs secrets, passwords, or full tokens.
+ * - Never prints secret contents in exception messages.
  */
 @Service
 public class JwtService {
@@ -29,41 +32,54 @@ public class JwtService {
     private static final Logger logger = LoggerFactory.getLogger(JwtService.class);
     private static final int MIN_KEY_BYTES = 32; // Minimum 256 bits required for HS256
 
-    private final String jwtSecret;
+    private final SecretKey signingKey;
     private final long jwtExpirationMs;
 
     public JwtService(
-            @Value("${jwt.secret}") String jwtSecret,
+            @Value("${jwt.secret:}") String jwtSecret,
             @Value("${jwt.expiration-ms:86400000}") long jwtExpirationMs) {
-        this.jwtSecret = jwtSecret;
+        this.signingKey = initSigningKey(jwtSecret);
         this.jwtExpirationMs = jwtExpirationMs;
     }
 
     /**
-     * Resolves the cryptographic signing key from the configured secret.
-     * Supports both Base64-encoded keys and UTF-8 strings, enforcing a minimum of 256 bits.
+     * Validates and resolves the cryptographic signing key immediately upon bean construction.
+     * Fails startup fast if the secret is missing, blank, or shorter than 256 bits (32 bytes).
+     * Never exposes the raw secret in error messages.
      */
-    public SecretKey getSigningKey() {
-        if (jwtSecret == null || jwtSecret.trim().isEmpty()) {
-            throw new IllegalArgumentException("JWT secret cannot be null or empty.");
+    private SecretKey initSigningKey(String rawSecret) {
+        if (rawSecret == null || rawSecret.trim().isEmpty()) {
+            throw new IllegalStateException(
+                    "JWT secret is not configured. The 'JWT_SECRET' environment variable must be set with a cryptographically secure key of at least 256 bits (32 bytes).");
         }
+
         byte[] keyBytes;
         try {
-            keyBytes = Decoders.BASE64.decode(jwtSecret.trim());
+            keyBytes = Decoders.BASE64.decode(rawSecret.trim());
         } catch (Exception e) {
-            keyBytes = jwtSecret.trim().getBytes(StandardCharsets.UTF_8);
+            keyBytes = rawSecret.trim().getBytes(StandardCharsets.UTF_8);
         }
 
         if (keyBytes.length < MIN_KEY_BYTES) {
-            byte[] rawBytes = jwtSecret.trim().getBytes(StandardCharsets.UTF_8);
-            if (rawBytes.length >= MIN_KEY_BYTES) {
-                keyBytes = rawBytes;
+            // Also check raw UTF-8 bytes in case base64 decoding yielded fewer than 32 bytes
+            byte[] utf8Bytes = rawSecret.trim().getBytes(StandardCharsets.UTF_8);
+            if (utf8Bytes.length >= MIN_KEY_BYTES) {
+                keyBytes = utf8Bytes;
             } else {
-                throw new IllegalArgumentException(
-                        "JWT secret key must be at least 256 bits (32 bytes) long. Provided size: " + keyBytes.length + " bytes.");
+                throw new IllegalStateException(
+                        "JWT secret is too weak. The 'JWT_SECRET' environment variable must provide at least 256 bits (32 bytes). Current key length: "
+                                + keyBytes.length + " bytes.");
             }
         }
+
         return Keys.hmacShaKeyFor(keyBytes);
+    }
+
+    /**
+     * Returns the validated signing key.
+     */
+    public SecretKey getSigningKey() {
+        return this.signingKey;
     }
 
     /**
@@ -91,7 +107,7 @@ public class JwtService {
                 .subject(subject)
                 .issuedAt(now)
                 .expiration(expiryDate)
-                .signWith(getSigningKey(), Jwts.SIG.HS256)
+                .signWith(this.signingKey, Jwts.SIG.HS256)
                 .compact();
     }
 
@@ -100,7 +116,7 @@ public class JwtService {
      */
     public Claims extractAllClaims(String token) {
         return Jwts.parser()
-                .verifyWith(getSigningKey())
+                .verifyWith(this.signingKey)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
