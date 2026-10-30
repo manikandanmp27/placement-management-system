@@ -2,6 +2,7 @@ package com.example.placement_management_system.controller;
 
 import com.example.placement_management_system.entity.Interview;
 import com.example.placement_management_system.service.InterviewService;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -17,21 +18,25 @@ public class InterviewController {
     }
 
     @GetMapping
+    @PreAuthorize("hasAnyRole('STUDENT', 'PLACEMENT_OFFICER', 'ADMIN')")
     public List<Interview> getAllInterviews() {
         return interviewService.getAllInterviews();
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('STUDENT', 'PLACEMENT_OFFICER', 'ADMIN')")
     public Interview getInterviewById(@PathVariable Integer id) {
         return interviewService.getInterviewById(id);
     }
 
     @PostMapping
+    @PreAuthorize("hasAnyRole('PLACEMENT_OFFICER', 'ADMIN')")
     public Interview createInterview(@RequestBody Interview interview) {
         return interviewService.saveInterview(interview);
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('PLACEMENT_OFFICER', 'ADMIN')")
     public void deleteInterview(@PathVariable Integer id) {
         interviewService.deleteInterview(id);
     }
