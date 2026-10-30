@@ -22,3 +22,10 @@ cors.allowed-origins=http://localhost:5173
 # Application startup will fail if JWT_SECRET is missing, blank, or shorter than 256 bits.
 jwt.secret=${JWT_SECRET:}
 jwt.expiration-ms=${JWT_EXPIRATION_MS:86400000}
+
+# Initial Admin Bootstrap Configuration
+# If no ROLE_ADMIN exists, an initial admin will be provisioned on startup using these credentials.
+# If these variables are not set and no admin exists, bootstrap is skipped (safe policy).
+app.bootstrap.admin.email=${ADMIN_INITIAL_EMAIL:}
+app.bootstrap.admin.password=${ADMIN_INITIAL_PASSWORD:}
+
