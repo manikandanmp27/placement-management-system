@@ -12,11 +12,12 @@
 The **Campus Placement Management System** is a decoupled full-stack university placement automation platform designed to manage the end-to-end higher education campus recruitment lifecycle. It digitizes student records, corporate partner registries, job postings, automated academic eligibility verification, application tracking, multi-round interview schedules, final placement records, and department-level placement analytics.
 
 ### 1.2 Main Users & Intended Roles
-Based on the design specifications in [Project_Requirements.md](file:///e:/Github%20Repo/placement-management-system/docs/Project_Requirements.md):
-- **Students**: Browse verified job opportunities, verify academic eligibility against company criteria, submit applications, track application status, and view interview invitations.
-- **Placement Officers / Administrators**: Register student profiles, onboard partner companies, post recruitment drives, supervise multi-round selection processes, generate job offers, record compensation packages, and monitor department hiring percentages.
+Based on the design specifications in [Project_Requirements.md](file:///e:/Github%20Repo/placement-management-system/docs/Project_Requirements.md) and the finalized three-role security architecture (Task 0.2.1A):
+- **Students (`ROLE_STUDENT`)**: Browse verified job opportunities and partner companies, verify academic eligibility, apply for jobs, track personal application progress, view personal interview schedules/results, view placement offers, and monitor department statistics. Strictly isolated to their own student records.
+- **Placement Officers (`ROLE_PLACEMENT_OFFICER`)**: Manage student academic records in roster, onboard corporate partners, post recruitment drives, supervise application screening and shortlisting, schedule interview rounds, update interview outcomes, record final placement offers, and monitor department analytics. Restricted from user account and role management.
+- **Administrators (`ROLE_ADMIN`)**: Overall system administration, user account lifecycle governance (create, enable/disable accounts), role assignment, provisioning and onboarding of Placement Officer accounts, with full access to all placement operations.
 
-*(Note on Current Access Model: While role separation is defined in specification documents, the current codebase does not yet implement authentication or access controls. All views and API endpoints are currently accessible without authentication).*
+*(Note on Current Access Model: While three distinct roles are finalized in architecture specifications, the current codebase does not yet implement authentication or access controls. All views and API endpoints are currently accessible without authentication).*
 
 ### 1.3 Actual Technology Stack
 The verified technology stack derived directly from package manifests and project configuration files:
@@ -74,7 +75,7 @@ However, the application currently lacks authentication/authorization, entity up
 | **Department Placement Statistics** | **COMPLETE** | Live execution of stored procedure `PlacementStatistics` with single-department inspection and multi-department comparative visualization in [StatisticsPage.jsx](file:///e:/Github%20Repo/placement-management-system/frontend/src/pages/StatisticsPage.jsx). |
 | **Theme Engine (Light & Dark Mode)** | **COMPLETE** | Context-based theme engine with localStorage persistence, system preference detection, and floating toggle in [ThemeContext.jsx](file:///e:/Github%20Repo/placement-management-system/frontend/src/contexts/ThemeContext.jsx). |
 | **Cloud Health Check** | **COMPLETE** | Endpoint `GET /api/health` providing service status and timestamp in [HealthController.java](file:///e:/Github%20Repo/placement-management-system/backend/src/main/java/com/example/placement_management_system/controller/HealthController.java). |
-| **Authentication & Role-Based Access Control** | **NOT IMPLEMENTED** | No Spring Security, no JWT/session authentication, no login/register screens, no role differentiation in controllers or frontend routes. |
+| **Authentication & Role-Based Access Control** | **IN PROGRESS (FOUNDATION COMPLETE)** | Security foundation implemented (Task 0.2.2): Spring Security, JJWT 0.12.6, Role enum (3 roles), AppUser entity, AppUserRepository, JwtService, auth_schema.sql, passing test suite (9 tests). Endpoints, filter chain, and UI pending. |
 | **Entity Editing / Modification (PUT/PATCH)** | **NOT IMPLEMENTED** | Neither the backend controllers nor the frontend API clients and forms provide update/edit functionality. |
 | **Automated Unit & Integration Test Suite** | **PARTIAL / OPERATIONAL** | In-memory H2 test profile configured via `application-test.properties` and `@ActiveProfiles("test")`. `PlacementManagementSystemApplicationTests.contextLoads` passes with exit code 0. Stored procedures and triggers require dedicated MySQL integration testing. |
 
@@ -819,6 +820,7 @@ While H2 handles JPA entity schema creation (`create-drop`), validation, and sta
 | **2026-10-23** | `27f045c` | Bug fix: Resilient response parsing for plain-text stored procedure messages and restored INR currency symbol (`₹`). | manikandanmp27 |
 | **2026-10-23** | `452ec10` | Merged remote deployment and bug fix commits to `main`. | manikandanmp27 |
 | **2026-10-30** | Phase 1 Backend Testing Infrastructure | Configured H2 test-scoped dependency, created `application-test.properties`, applied `@ActiveProfiles("test")`, and verified `.\mvnw.cmd test` passes with exit code 0. | Antigravity |
+| **2026-10-30** | Task 0.2.2 Authentication Security Foundation | Added Spring Security and JJWT 0.12.6 dependencies, created Role enum (`ROLE_STUDENT`, `ROLE_PLACEMENT_OFFICER`, `ROLE_ADMIN`), created `AppUser` entity and `AppUserRepository`, implemented `JwtService` (HMAC-SHA256, 256-bit key requirement, safe claims extraction), created `database/auth_schema.sql`, configured environment-driven JWT properties, and added unit/integration tests (9 tests passing). | Antigravity |
 
 ---
 
@@ -829,9 +831,18 @@ While H2 handles JPA entity schema creation (`create-drop`), validation, and sta
   - **Status**: Completed (2026-10-30)
   - **Implementation**: Added test-scoped `com.h2database:h2` in `backend/pom.xml`, created `backend/src/test/resources/application-test.properties` configured for in-memory H2 with `MODE=MySQL`, and added `@ActiveProfiles("test")` to `PlacementManagementSystemApplicationTests`. Verified `.\mvnw.cmd test` passes (1 run, 0 failures, 0 errors in ~9.8s).
 - [ ] **Task 0.2: Implement Authentication & Authorization (Spring Security + JWT)**
-  - **Why**: Currently all APIs and UI routes are completely public; any user can delete student records or company partnerships.
-  - **Files**: `backend/src/main/java/.../config/SecurityConfig.java`, `backend/src/main/java/.../controller/AuthController.java`, `frontend/src/contexts/AuthContext.jsx`.
-  - **Acceptance Criteria**: Role-based access control protecting administrative endpoints and separating Student vs. Placement Officer permissions.
+  - [x] **Task 0.2.2: Implement Authentication Security Foundation**
+    - **Status**: **COMPLETE** (2026-10-30)
+    - **Implementation**: Added Spring Security and JJWT 0.12.6 (`jjwt-api`, `jjwt-impl`, `jjwt-jackson`, `spring-security-test`) in [pom.xml](file:///e:/Github%20Repo/placement-management-system/backend/pom.xml). Created [Role.java](file:///e:/Github%20Repo/placement-management-system/backend/src/main/java/com/example/placement_management_system/entity/Role.java) (`ROLE_STUDENT`, `ROLE_PLACEMENT_OFFICER`, `ROLE_ADMIN`), [AppUser.java](file:///e:/Github%20Repo/placement-management-system/backend/src/main/java/com/example/placement_management_system/entity/AppUser.java) (table `app_user`, 1:1 with `Student`, no cascade delete), [AppUserRepository.java](file:///e:/Github%20Repo/placement-management-system/backend/src/main/java/com/example/placement_management_system/repository/AppUserRepository.java) (`findByEmail`, `existsByEmail`, `findByStudent_StudentId`, `existsByStudent_StudentId`, `countByRole`), [JwtService.java](file:///e:/Github%20Repo/placement-management-system/backend/src/main/java/com/example/placement_management_system/security/JwtService.java) (HMAC-SHA256, >= 256-bit secret enforcement, claims extraction, zero secret/token logging), and [auth_schema.sql](file:///e:/Github%20Repo/placement-management-system/database/auth_schema.sql). Configured environment-driven properties in `application.properties` and isolated H2 test configuration. Verified all 9 tests pass (1 context load, 1 user repository test, 7 JWT tests).
+  - [ ] **Task 0.2.3: Implement Authentication Endpoints & Account Provisioning** *(Next Implementation Stage — Pending Review/Approval)*
+    - **Status**: **PLANNED**
+    - **Scope**: DTOs (`AuthRequest`, `AuthResponse`, `RegisterStudentRequest`), `AuthService`, `AuthController` (`POST /api/auth/login`, `POST /api/auth/register-student`), and `DataInitializer` root admin bootstrap from environment variables.
+  - [ ] **Task 0.2.4: Implement Spring Security Filter Chain & Method Authorization**
+    - **Status**: **PLANNED**
+    - **Scope**: `SecurityConfig`, `JwtAuthenticationFilter`, `DelegatedAuthenticationEntryPoint`, `CustomAccessDeniedHandler`, `@PreAuthorize` on controllers, and cross-student data isolation guards.
+  - [ ] **Task 0.2.5: Implement Frontend Authentication & Protected Routing**
+    - **Status**: **PLANNED**
+    - **Scope**: `AuthContext.jsx`, `client.js` token interceptor, `LoginPage.jsx`, `RegisterPage.jsx`, `ProtectedRoute.jsx`, and role-based navigation.
 
 ### 15.2 P1: Essential Incomplete Functionality
 - [ ] **Task 1.1: Implement Update (PUT/PATCH) Endpoints & Edit Modals**
