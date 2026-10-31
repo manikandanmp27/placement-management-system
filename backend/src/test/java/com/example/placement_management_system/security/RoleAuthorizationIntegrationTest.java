@@ -174,4 +174,162 @@ class RoleAuthorizationIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
                 .andExpect(status().isOk());
     }
+
+    @Test
+    @DisplayName("Student cannot create, edit, or delete academic student records")
+    void studentCannotCreateEditOrDeleteStudentRecords() throws Exception {
+        String newStudentJson = "{"
+                + "\"studentId\":201,"
+                + "\"name\":\"Intruder\","
+                + "\"email\":\"intruder@university.edu\","
+                + "\"department\":{\"departmentId\":1},"
+                + "\"graduationYear\":2025,"
+                + "\"cgpa\":9.0,"
+                + "\"backlogs\":0,"
+                + "\"placementStatus\":\"NOT_PLACED\""
+                + "}";
+
+        // Student POST attempt
+        mockMvc.perform(post("/api/students")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(newStudentJson))
+                .andExpect(status().isForbidden());
+
+        // Student PUT attempt
+        String updateJson = "{"
+                + "\"name\":\"Student Altered\","
+                + "\"email\":\"student1@university.edu\","
+                + "\"department\":{\"departmentId\":1},"
+                + "\"graduationYear\":2025,"
+                + "\"cgpa\":9.9,"
+                + "\"backlogs\":0,"
+                + "\"placementStatus\":\"PLACED\""
+                + "}";
+
+        mockMvc.perform(put("/api/students/101")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateJson))
+                .andExpect(status().isForbidden());
+
+        // Student DELETE attempt
+        mockMvc.perform(delete("/api/students/101")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + studentToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("Placement Officer can create and edit academic student records")
+    void officerCanCreateAndEditStudentRecords() throws Exception {
+        String createJson = "{"
+                + "\"studentId\":202,"
+                + "\"name\":\"Priya Sharma\","
+                + "\"email\":\"priya.sharma@university.edu\","
+                + "\"phone\":\"9876543210\","
+                + "\"department\":{\"departmentId\":1},"
+                + "\"graduationYear\":2026,"
+                + "\"cgpa\":8.85,"
+                + "\"backlogs\":0,"
+                + "\"placementStatus\":\"NOT_PLACED\""
+                + "}";
+
+        // Officer creates record
+        mockMvc.perform(post("/api/students")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + officerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createJson))
+                .andExpect(status().isOk());
+
+        // Officer edits record
+        String updateJson = "{"
+                + "\"name\":\"Priya Sharma Updated\","
+                + "\"email\":\"priya.updated@university.edu\","
+                + "\"phone\":\"9876543210\","
+                + "\"department\":{\"departmentId\":1},"
+                + "\"graduationYear\":2026,"
+                + "\"cgpa\":9.10,"
+                + "\"backlogs\":0,"
+                + "\"placementStatus\":\"PLACED\""
+                + "}";
+
+        mockMvc.perform(put("/api/students/202")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + officerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateJson))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("Officer student creation validates duplicate ID, duplicate email, and department")
+    void officerStudentCreationValidation() throws Exception {
+        // Duplicate student ID (101 already exists)
+        String dupIdJson = "{"
+                + "\"studentId\":101,"
+                + "\"name\":\"Duplicate ID\","
+                + "\"email\":\"newemail@university.edu\","
+                + "\"department\":{\"departmentId\":1},"
+                + "\"graduationYear\":2025,"
+                + "\"cgpa\":7.5,"
+                + "\"backlogs\":0"
+                + "}";
+
+        mockMvc.perform(post("/api/students")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + officerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(dupIdJson))
+                .andExpect(status().isConflict());
+
+        // Duplicate email (student1@university.edu already exists)
+        String dupEmailJson = "{"
+                + "\"studentId\":205,"
+                + "\"name\":\"Duplicate Email\","
+                + "\"email\":\"student1@university.edu\","
+                + "\"department\":{\"departmentId\":1},"
+                + "\"graduationYear\":2025,"
+                + "\"cgpa\":7.5,"
+                + "\"backlogs\":0"
+                + "}";
+
+        mockMvc.perform(post("/api/students")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + officerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(dupEmailJson))
+                .andExpect(status().isConflict());
+
+        // Non-existent department (999)
+        String invalidDeptJson = "{"
+                + "\"studentId\":206,"
+                + "\"name\":\"Invalid Dept\","
+                + "\"email\":\"val@university.edu\","
+                + "\"department\":{\"departmentId\":999},"
+                + "\"graduationYear\":2025,"
+                + "\"cgpa\":7.5,"
+                + "\"backlogs\":0"
+                + "}";
+
+        mockMvc.perform(post("/api/students")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + officerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(invalidDeptJson))
+                .andExpect(status().isBadRequest());
+
+        // Invalid CGPA (> 10.0)
+        String invalidCgpaJson = "{"
+                + "\"studentId\":207,"
+                + "\"name\":\"Invalid CGPA\","
+                + "\"email\":\"cgpa@university.edu\","
+                + "\"department\":{\"departmentId\":1},"
+                + "\"graduationYear\":2025,"
+                + "\"cgpa\":11.5,"
+                + "\"backlogs\":0"
+                + "}";
+
+        mockMvc.perform(post("/api/students")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + officerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(invalidCgpaJson))
+                .andExpect(status().isBadRequest());
+    }
 }
+

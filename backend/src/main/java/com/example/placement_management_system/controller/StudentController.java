@@ -35,6 +35,12 @@ public class StudentController {
         return studentService.saveStudent(student);
     }
 
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('PLACEMENT_OFFICER', 'ADMIN')")
+    public Student updateStudent(@PathVariable Integer id, @RequestBody Student student) {
+        return studentService.updateStudent(id, student);
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('PLACEMENT_OFFICER', 'ADMIN')")
     public void deleteStudent(@PathVariable Integer id) {

@@ -1,16 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   GraduationCap,
   Plus,
+  Pencil,
   Trash2,
   Eye,
-  Filter,
-  Phone,
-  Mail,
-  Calendar,
-  Building,
-  CheckCircle2,
-  XCircle,
 } from 'lucide-react';
 
 import { studentsApi } from '../api/students';
@@ -29,6 +23,8 @@ import { SkeletonTable } from '../components/common/LoadingSkeleton';
 
 import FormInput from '../components/forms/FormInput';
 import FormSelect from '../components/forms/FormSelect';
+
+const CURRENT_YEAR = new Date().getFullYear();
 
 export function StudentsPage() {
   const toast = useToast();
@@ -58,14 +54,28 @@ export function StudentsPage() {
     email: '',
     phone: '',
     departmentId: '',
-    graduationYear: new Date().getFullYear(),
+    graduationYear: CURRENT_YEAR,
     cgpa: '',
     backlogs: '0',
     placementStatus: 'NOT_PLACED',
   });
   const [formErrors, setFormErrors] = useState({});
 
-  const loadData = async () => {
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editFormData, setEditFormData] = useState({
+    studentId: '',
+    name: '',
+    email: '',
+    phone: '',
+    departmentId: '',
+    graduationYear: CURRENT_YEAR,
+    cgpa: '',
+    backlogs: '0',
+    placementStatus: 'NOT_PLACED',
+  });
+  const [editFormErrors, setEditFormErrors] = useState({});
+
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -81,11 +91,11 @@ export function StudentsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   const filteredStudents = useMemo(() => {
     return students.filter((s) => {
@@ -210,7 +220,7 @@ export function StudentsPage() {
         email: '',
         phone: '',
         departmentId: '',
-        graduationYear: new Date().getFullYear(),
+        graduationYear: CURRENT_YEAR,
         cgpa: '',
         backlogs: '0',
         placementStatus: 'NOT_PLACED',
@@ -219,6 +229,88 @@ export function StudentsPage() {
     } catch (err) {
       console.error('Failed to create student:', err);
       toast.error(err.message || 'Failed to create student. Please verify ID/Email uniqueness.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleEditClick = (student) => {
+    setEditFormData({
+      studentId: student.studentId,
+      name: student.name || '',
+      email: student.email || '',
+      phone: student.phone || '',
+      departmentId: student.department?.departmentId ? String(student.department.departmentId) : '',
+      graduationYear: student.graduationYear || CURRENT_YEAR,
+      cgpa: student.cgpa !== undefined && student.cgpa !== null ? String(student.cgpa) : '',
+      backlogs: student.backlogs !== undefined && student.backlogs !== null ? String(student.backlogs) : '0',
+      placementStatus: student.placementStatus || 'NOT_PLACED',
+    });
+    setEditFormErrors({});
+    setIsEditModalOpen(true);
+  };
+
+  const validateEditForm = () => {
+    const errors = {};
+    if (!editFormData.name.trim()) {
+      errors.name = 'Full name is required';
+    }
+    if (!editFormData.email.trim() || !/\S+@\S+\.\S+/.test(editFormData.email)) {
+      errors.email = 'Valid email address is required';
+    }
+    if (!editFormData.departmentId) {
+      errors.departmentId = 'Department is required';
+    }
+    if (!editFormData.graduationYear || isNaN(editFormData.graduationYear) || Number(editFormData.graduationYear) <= 0) {
+      errors.graduationYear = 'Valid graduation year is required';
+    }
+    if (
+      editFormData.cgpa === '' ||
+      isNaN(editFormData.cgpa) ||
+      Number(editFormData.cgpa) < 0 ||
+      Number(editFormData.cgpa) > 10
+    ) {
+      errors.cgpa = 'CGPA must be a decimal between 0.00 and 10.00';
+    }
+    if (editFormData.backlogs === '' || isNaN(editFormData.backlogs) || Number(editFormData.backlogs) < 0) {
+      errors.backlogs = 'Backlogs count cannot be negative';
+    }
+    setEditFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleUpdateStudent = async (e) => {
+    e.preventDefault();
+    if (!validateEditForm()) return;
+
+    try {
+      setIsSubmitting(true);
+      const selectedDept = departments.find(
+        (d) => String(d.departmentId) === String(editFormData.departmentId)
+      );
+
+      const payload = {
+        studentId: Number(editFormData.studentId),
+        name: editFormData.name.trim(),
+        email: editFormData.email.trim(),
+        phone: editFormData.phone.trim() || null,
+        department: {
+          departmentId: Number(editFormData.departmentId),
+          departmentName: selectedDept?.departmentName || '',
+        },
+        graduationYear: Number(editFormData.graduationYear),
+        cgpa: parseFloat(Number(editFormData.cgpa).toFixed(2)),
+        backlogs: Number(editFormData.backlogs),
+        placementStatus: editFormData.placementStatus,
+      };
+
+      await studentsApi.update(editFormData.studentId, payload);
+      toast.success(`Student record for ${payload.name} updated successfully!`);
+      setIsEditModalOpen(false);
+      loadData();
+    } catch (err) {
+      console.error('Failed to update student:', err);
+      toast.error(err.message || 'Failed to update student record.');
     } finally {
       setIsSubmitting(false);
     }
@@ -402,6 +494,16 @@ export function StudentsPage() {
                           title="View Details"
                         >
                           <Eye size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-btn icon-btn-sm"
+                          onClick={() => handleEditClick(student)}
+                          aria-label={`Edit details of ${student.name}`}
+                          title="Edit Student"
+                          id={`btn-edit-student-${student.studentId}`}
+                        >
+                          <Pencil size={15} />
                         </button>
                         <button
                           type="button"
@@ -668,6 +770,136 @@ export function StudentsPage() {
               name="placementStatus"
               value={formData.placementStatus}
               onChange={(e) => setFormData({ ...formData, placementStatus: e.target.value })}
+              options={[
+                { value: 'NOT_PLACED', label: 'NOT_PLACED' },
+                { value: 'PLACED', label: 'PLACED' },
+              ]}
+              required
+            />
+          </div>
+        </form>
+      </Modal>
+
+      {/* Edit Student Record Modal */}
+      <Modal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        title="Edit Academic Record"
+        size="lg"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => setIsEditModalOpen(false)}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleUpdateStudent}
+              isLoading={isSubmitting}
+              id="submit-edit-student-btn"
+            >
+              Save Changes
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={handleUpdateStudent}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+            <FormInput
+              label="Student ID"
+              name="studentId"
+              type="number"
+              value={editFormData.studentId}
+              disabled
+              helpText="Student ID is permanent and cannot be modified"
+            />
+
+            <FormInput
+              label="Full Name"
+              name="name"
+              value={editFormData.name}
+              onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+              placeholder="e.g. Priya Sharma"
+              required
+              error={editFormErrors.name}
+            />
+
+            <FormInput
+              label="Email Address"
+              name="email"
+              type="email"
+              value={editFormData.email}
+              onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+              placeholder="priya@example.com"
+              required
+              error={editFormErrors.email}
+            />
+
+            <FormInput
+              label="Phone Number"
+              name="phone"
+              value={editFormData.phone}
+              onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
+              placeholder="e.g. 9876543210"
+            />
+
+            <FormSelect
+              label="Academic Department"
+              name="departmentId"
+              value={editFormData.departmentId}
+              onChange={(e) => setEditFormData({ ...editFormData, departmentId: e.target.value })}
+              options={departments.map((d) => ({
+                value: d.departmentId,
+                label: d.departmentName,
+              }))}
+              required
+              error={editFormErrors.departmentId}
+            />
+
+            <FormInput
+              label="Graduation Year"
+              name="graduationYear"
+              type="number"
+              value={editFormData.graduationYear}
+              onChange={(e) => setEditFormData({ ...editFormData, graduationYear: e.target.value })}
+              required
+              error={editFormErrors.graduationYear}
+            />
+
+            <FormInput
+              label="CGPA"
+              name="cgpa"
+              type="number"
+              step="0.01"
+              min="0"
+              max="10"
+              value={editFormData.cgpa}
+              onChange={(e) => setEditFormData({ ...editFormData, cgpa: e.target.value })}
+              placeholder="e.g. 8.75"
+              required
+              error={editFormErrors.cgpa}
+              helpText="Scale of 0.00 to 10.00"
+            />
+
+            <FormInput
+              label="Backlogs"
+              name="backlogs"
+              type="number"
+              min="0"
+              value={editFormData.backlogs}
+              onChange={(e) => setEditFormData({ ...editFormData, backlogs: e.target.value })}
+              required
+              error={editFormErrors.backlogs}
+            />
+
+            <FormSelect
+              label="Placement Status"
+              name="placementStatus"
+              value={editFormData.placementStatus}
+              onChange={(e) => setEditFormData({ ...editFormData, placementStatus: e.target.value })}
               options={[
                 { value: 'NOT_PLACED', label: 'NOT_PLACED' },
                 { value: 'PLACED', label: 'PLACED' },
