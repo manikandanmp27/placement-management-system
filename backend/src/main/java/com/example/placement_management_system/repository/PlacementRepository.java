@@ -7,4 +7,6 @@ import java.util.List;
 
 public interface PlacementRepository extends JpaRepository<Placement, Integer> {
     List<Placement> findByStudent_StudentId(Integer studentId);
+
+    boolean existsByStudent_StudentIdAndJob_JobId(Integer studentId, Integer jobId);
 }
