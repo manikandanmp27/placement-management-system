@@ -1,18 +1,15 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   CalendarCheck,
   Plus,
+  Pencil,
   Trash2,
   Eye,
-  Calendar,
-  Building2,
-  User,
-  Clock,
-  CheckCircle,
 } from 'lucide-react';
 
 import { interviewsApi } from '../api/interviews';
 import { applicationsApi } from '../api/applications';
+import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 
 import Button from '../components/common/Button';
@@ -30,9 +27,11 @@ import { formatDate, isExpired } from '../utils/formatters';
 
 const ROUND_TYPES = ['Technical', 'HR', 'Aptitude', 'Managerial', 'Group Discussion'];
 const RESULTS = ['Pending', 'Passed', 'Failed'];
+const TODAY_DATE = new Date().toISOString().split('T')[0];
 
 export function InterviewsPage() {
   const toast = useToast();
+  const { isStudent } = useAuth();
 
   const [interviews, setInterviews] = useState([]);
   const [applications, setApplications] = useState([]);
@@ -42,7 +41,7 @@ export function InterviewsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [roundTypeFilter, setRoundTypeFilter] = useState('');
   const [resultFilter, setResultFilter] = useState('');
-  const [scheduleTab, setScheduleTab] = useState('ALL'); 
+  const [scheduleTab, setScheduleTab] = useState('ALL');
 
   const [selectedInterview, setSelectedInterview] = useState(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
@@ -51,23 +50,29 @@ export function InterviewsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Outcome update state
+  const [isOutcomeModalOpen, setIsOutcomeModalOpen] = useState(false);
+  const [outcomeInterview, setOutcomeInterview] = useState(null);
+  const [newOutcomeValue, setNewOutcomeValue] = useState('Pending');
+  const [isUpdatingOutcome, setIsUpdatingOutcome] = useState(false);
+
   const [formData, setFormData] = useState({
     interviewId: '',
     applicationId: '',
     roundNumber: '1',
     roundType: 'Technical',
-    interviewDate: new Date().toISOString().split('T')[0],
+    interviewDate: TODAY_DATE,
     result: 'Pending',
   });
   const [formErrors, setFormErrors] = useState({});
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       const [interviewsData, appsData] = await Promise.all([
         interviewsApi.getAll(),
-        applicationsApi.getAll().catch(() => []),
+        !isStudent ? applicationsApi.getAll().catch(() => []) : Promise.resolve([]),
       ]);
       setInterviews(Array.isArray(interviewsData) ? interviewsData : []);
       setApplications(Array.isArray(appsData) ? appsData : []);
@@ -77,11 +82,11 @@ export function InterviewsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [isStudent]);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   const filteredInterviews = useMemo(() => {
     return interviews.filter((item) => {
@@ -113,6 +118,35 @@ export function InterviewsPage() {
   const handleView = (interview) => {
     setSelectedInterview(interview);
     setIsViewModalOpen(true);
+  };
+
+  const handleOpenOutcomeModal = (interview) => {
+    setOutcomeInterview(interview);
+    setNewOutcomeValue(interview.result || 'Pending');
+    setIsOutcomeModalOpen(true);
+  };
+
+  const handleUpdateOutcome = async (e) => {
+    e.preventDefault();
+    if (!outcomeInterview) return;
+
+    try {
+      setIsUpdatingOutcome(true);
+      await interviewsApi.updateResult(outcomeInterview.interviewId, newOutcomeValue);
+      toast.success(`Interview #${outcomeInterview.interviewId} outcome updated to "${newOutcomeValue}"`);
+      setIsOutcomeModalOpen(false);
+
+      if (selectedInterview && selectedInterview.interviewId === outcomeInterview.interviewId) {
+        setSelectedInterview((prev) => (prev ? { ...prev, result: newOutcomeValue } : null));
+      }
+      setOutcomeInterview(null);
+      loadData();
+    } catch (err) {
+      console.error('Failed to update interview outcome:', err);
+      toast.error(err.message || 'Failed to update interview outcome.');
+    } finally {
+      setIsUpdatingOutcome(false);
+    }
   };
 
   const handleDelete = async () => {
@@ -180,7 +214,7 @@ export function InterviewsPage() {
         applicationId: '',
         roundNumber: '1',
         roundType: 'Technical',
-        interviewDate: new Date().toISOString().split('T')[0],
+        interviewDate: TODAY_DATE,
         result: 'Pending',
       });
       loadData();
@@ -209,21 +243,25 @@ export function InterviewsPage() {
             Interview Schedules
           </h2>
           <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
-            Assessment rounds, technical evaluations, HR discussions, and outcome tracking.
+            {isStudent
+              ? 'View your upcoming assessment sessions, interview rounds, and evaluation outcomes.'
+              : 'Assessment rounds, technical evaluations, HR discussions, and outcome tracking.'}
           </p>
         </div>
 
-        <Button
-          variant="primary"
-          icon={Plus}
-          onClick={() => {
-            setFormErrors({});
-            setIsCreateModalOpen(true);
-          }}
-          id="btn-schedule-interview"
-        >
-          Schedule Interview
-        </Button>
+        {!isStudent && (
+          <Button
+            variant="primary"
+            icon={Plus}
+            onClick={() => {
+              setFormErrors({});
+              setIsCreateModalOpen(true);
+            }}
+            id="btn-schedule-interview"
+          >
+            Schedule Interview
+          </Button>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.5rem' }}>
@@ -311,11 +349,13 @@ export function InterviewsPage() {
           description={
             searchQuery || roundTypeFilter || resultFilter || scheduleTab !== 'ALL'
               ? 'No interview sessions match the active criteria.'
+              : isStudent
+              ? 'You do not have any scheduled interview rounds at this time.'
               : 'There are currently no interview schedules recorded.'
           }
-          actionText="Schedule Interview"
-          actionIcon={Plus}
-          onAction={() => setIsCreateModalOpen(true)}
+          actionText={!isStudent ? 'Schedule Interview' : undefined}
+          actionIcon={!isStudent ? Plus : undefined}
+          onAction={!isStudent ? () => setIsCreateModalOpen(true) : undefined}
         />
       ) : (
         <div className="card" style={{ overflow: 'hidden' }}>
@@ -379,16 +419,29 @@ export function InterviewsPage() {
                         >
                           <Eye size={15} />
                         </button>
-                        <button
-                          type="button"
-                          className="icon-btn icon-btn-sm"
-                          onClick={() => setInterviewToDelete(item)}
-                          aria-label={`Delete interview #${item.interviewId}`}
-                          title="Delete Interview"
-                          style={{ color: 'var(--color-danger)' }}
-                        >
-                          <Trash2 size={15} />
-                        </button>
+                        {!isStudent && (
+                          <>
+                            <button
+                              type="button"
+                              className="icon-btn icon-btn-sm"
+                              onClick={() => handleOpenOutcomeModal(item)}
+                              aria-label={`Update outcome for interview #${item.interviewId}`}
+                              title="Update Outcome"
+                            >
+                              <Pencil size={15} />
+                            </button>
+                            <button
+                              type="button"
+                              className="icon-btn icon-btn-sm"
+                              onClick={() => setInterviewToDelete(item)}
+                              aria-label={`Delete interview #${item.interviewId}`}
+                              title="Delete Interview"
+                              style={{ color: 'var(--color-danger)' }}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -399,14 +452,28 @@ export function InterviewsPage() {
         </div>
       )}
 
+      {/* View Details Modal */}
       <Modal
         isOpen={isViewModalOpen}
         onClose={() => setIsViewModalOpen(false)}
         title={`Interview #${selectedInterview?.interviewId} Details`}
         footer={
-          <Button variant="secondary" onClick={() => setIsViewModalOpen(false)}>
-            Close
-          </Button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+            {!isStudent && selectedInterview ? (
+              <Button
+                variant="outline"
+                icon={Pencil}
+                onClick={() => {
+                  handleOpenOutcomeModal(selectedInterview);
+                }}
+              >
+                Update Outcome
+              </Button>
+            ) : <div />}
+            <Button variant="secondary" onClick={() => setIsViewModalOpen(false)}>
+              Close
+            </Button>
+          </div>
         }
       >
         {selectedInterview && (
@@ -487,114 +554,197 @@ export function InterviewsPage() {
         )}
       </Modal>
 
+      {/* Outcome Update Modal */}
       <Modal
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        title="Schedule Interview Round"
+        isOpen={isOutcomeModalOpen}
+        onClose={() => {
+          if (!isUpdatingOutcome) {
+            setIsOutcomeModalOpen(false);
+            setOutcomeInterview(null);
+          }
+        }}
+        title={`Update Interview Outcome — #${outcomeInterview?.interviewId}`}
         footer={
           <>
             <Button
               variant="secondary"
-              onClick={() => setIsCreateModalOpen(false)}
-              disabled={isSubmitting}
+              onClick={() => {
+                setIsOutcomeModalOpen(false);
+                setOutcomeInterview(null);
+              }}
+              disabled={isUpdatingOutcome}
             >
               Cancel
             </Button>
             <Button
               variant="primary"
-              onClick={handleCreate}
-              isLoading={isSubmitting}
-              id="submit-schedule-interview-btn"
+              onClick={handleUpdateOutcome}
+              isLoading={isUpdatingOutcome}
+              id="submit-outcome-btn"
             >
-              Schedule Round
+              Save Outcome
             </Button>
           </>
         }
       >
-        <form onSubmit={handleCreate}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <FormInput
-              label="Interview ID"
-              name="interviewId"
-              type="number"
-              value={formData.interviewId}
-              onChange={(e) => setFormData({ ...formData, interviewId: e.target.value })}
-              placeholder="e.g. 413"
-              required
-              error={formErrors.interviewId}
-              helpText="Unique numeric interview ID"
-            />
-
-            <FormSelect
-              label="Associated Application"
-              name="applicationId"
-              value={formData.applicationId}
-              onChange={(e) => setFormData({ ...formData, applicationId: e.target.value })}
-              options={applications.map((a) => ({
-                value: a.applicationId,
-                label: `App #${a.applicationId} - ${a.student?.name} (${a.job?.jobTitle} @ ${a.job?.company?.companyName})`,
-              }))}
-              required
-              error={formErrors.applicationId}
-            />
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
-              <FormInput
-                label="Round Number"
-                name="roundNumber"
-                type="number"
-                min="1"
-                value={formData.roundNumber}
-                onChange={(e) => setFormData({ ...formData, roundNumber: e.target.value })}
-                required
-                error={formErrors.roundNumber}
-              />
+        {outcomeInterview && (
+          <form onSubmit={handleUpdateOutcome}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div
+                style={{
+                  padding: '0.875rem',
+                  backgroundColor: 'var(--color-surface-hover)',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '0.85rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.35rem',
+                }}
+              >
+                <div>
+                  <strong>Candidate:</strong> {outcomeInterview.application?.student?.name} (ID: #{outcomeInterview.application?.student?.studentId})
+                </div>
+                <div>
+                  <strong>Position:</strong> {outcomeInterview.application?.job?.jobTitle} at {outcomeInterview.application?.job?.company?.companyName}
+                </div>
+                <div>
+                  <strong>Assessment:</strong> Round {outcomeInterview.roundNumber} ({outcomeInterview.roundType})
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
+                  <strong>Current Result:</strong>
+                  <StatusBadge status={outcomeInterview.result} />
+                </div>
+              </div>
 
               <FormSelect
-                label="Round Type"
-                name="roundType"
-                value={formData.roundType}
-                onChange={(e) => setFormData({ ...formData, roundType: e.target.value })}
-                options={ROUND_TYPES.map((rt) => ({ value: rt, label: rt }))}
-                required
-              />
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
-              <FormInput
-                label="Interview Date"
-                name="interviewDate"
-                type="date"
-                value={formData.interviewDate}
-                onChange={(e) => setFormData({ ...formData, interviewDate: e.target.value })}
-                required
-                error={formErrors.interviewDate}
-              />
-
-              <FormSelect
-                label="Result Status"
-                name="result"
-                value={formData.result}
-                onChange={(e) => setFormData({ ...formData, result: e.target.value })}
+                label="Evaluation Outcome"
+                name="resultOutcome"
+                value={newOutcomeValue}
+                onChange={(e) => setNewOutcomeValue(e.target.value)}
                 options={RESULTS.map((res) => ({ value: res, label: res }))}
                 required
+                helpText="Set interview round result to Pending, Passed, or Failed."
               />
             </div>
-          </div>
-        </form>
+          </form>
+        )}
       </Modal>
 
-      <ConfirmDialog
-        isOpen={!!interviewToDelete}
-        onClose={() => setInterviewToDelete(null)}
-        onConfirm={handleDelete}
-        title="Delete Interview Schedule"
-        message={`Are you sure you want to remove interview session #${interviewToDelete?.interviewId}?`}
-        confirmText="Delete Interview"
-        isLoading={isDeleting}
-      />
+      {/* Schedule Interview Modal */}
+      {!isStudent && (
+        <Modal
+          isOpen={isCreateModalOpen}
+          onClose={() => setIsCreateModalOpen(false)}
+          title="Schedule Interview Round"
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => setIsCreateModalOpen(false)}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={handleCreate}
+                isLoading={isSubmitting}
+                id="submit-schedule-interview-btn"
+              >
+                Schedule Round
+              </Button>
+            </>
+          }
+        >
+          <form onSubmit={handleCreate}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <FormInput
+                label="Interview ID"
+                name="interviewId"
+                type="number"
+                value={formData.interviewId}
+                onChange={(e) => setFormData({ ...formData, interviewId: e.target.value })}
+                placeholder="e.g. 413"
+                required
+                error={formErrors.interviewId}
+                helpText="Unique numeric interview ID"
+              />
+
+              <FormSelect
+                label="Associated Application"
+                name="applicationId"
+                value={formData.applicationId}
+                onChange={(e) => setFormData({ ...formData, applicationId: e.target.value })}
+                options={applications.map((a) => ({
+                  value: a.applicationId,
+                  label: `App #${a.applicationId} - ${a.student?.name} (${a.job?.jobTitle} @ ${a.job?.company?.companyName})`,
+                }))}
+                required
+                error={formErrors.applicationId}
+              />
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
+                <FormInput
+                  label="Round Number"
+                  name="roundNumber"
+                  type="number"
+                  min="1"
+                  value={formData.roundNumber}
+                  onChange={(e) => setFormData({ ...formData, roundNumber: e.target.value })}
+                  required
+                  error={formErrors.roundNumber}
+                />
+
+                <FormSelect
+                  label="Round Type"
+                  name="roundType"
+                  value={formData.roundType}
+                  onChange={(e) => setFormData({ ...formData, roundType: e.target.value })}
+                  options={ROUND_TYPES.map((rt) => ({ value: rt, label: rt }))}
+                  required
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
+                <FormInput
+                  label="Interview Date"
+                  name="interviewDate"
+                  type="date"
+                  value={formData.interviewDate}
+                  onChange={(e) => setFormData({ ...formData, interviewDate: e.target.value })}
+                  required
+                  error={formErrors.interviewDate}
+                />
+
+                <FormSelect
+                  label="Result Status"
+                  name="result"
+                  value={formData.result}
+                  onChange={(e) => setFormData({ ...formData, result: e.target.value })}
+                  options={RESULTS.map((res) => ({ value: res, label: res }))}
+                  required
+                />
+              </div>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Delete Confirm Modal */}
+      {!isStudent && (
+        <ConfirmDialog
+          isOpen={!!interviewToDelete}
+          onClose={() => setInterviewToDelete(null)}
+          onConfirm={handleDelete}
+          title="Delete Interview Schedule"
+          message={`Are you sure you want to remove interview session #${interviewToDelete?.interviewId}?`}
+          confirmText="Delete Interview"
+          isLoading={isDeleting}
+        />
+      )}
     </div>
   );
 }
 
 export default InterviewsPage;
+

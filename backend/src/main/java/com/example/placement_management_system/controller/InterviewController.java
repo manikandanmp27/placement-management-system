@@ -35,6 +35,24 @@ public class InterviewController {
         return interviewService.saveInterview(interview);
     }
 
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('PLACEMENT_OFFICER', 'ADMIN')")
+    public Interview updateInterview(@PathVariable Integer id, @RequestBody(required = false) Interview interview) {
+        if (interview == null) {
+            throw new IllegalArgumentException("Request body cannot be empty");
+        }
+        return interviewService.updateInterview(id, interview);
+    }
+
+    @PutMapping("/{id}/result")
+    @PreAuthorize("hasAnyRole('PLACEMENT_OFFICER', 'ADMIN')")
+    public Interview updateInterviewResult(@PathVariable Integer id, @RequestBody com.example.placement_management_system.dto.UpdateInterviewResultRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Request body cannot be empty");
+        }
+        return interviewService.updateInterviewResult(id, request.getResult());
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('PLACEMENT_OFFICER', 'ADMIN')")
     public void deleteInterview(@PathVariable Integer id) {

@@ -1,12 +1,7 @@
 package com.example.placement_management_system.security;
 
-import com.example.placement_management_system.entity.AppUser;
-import com.example.placement_management_system.entity.Department;
-import com.example.placement_management_system.entity.Role;
-import com.example.placement_management_system.entity.Student;
-import com.example.placement_management_system.repository.AppUserRepository;
-import com.example.placement_management_system.repository.DepartmentRepository;
-import com.example.placement_management_system.repository.StudentRepository;
+import com.example.placement_management_system.entity.*;
+import com.example.placement_management_system.repository.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,8 +15,14 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
+import java.time.LocalDate;
+
+import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.is;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
@@ -44,6 +45,21 @@ class RoleAuthorizationIntegrationTest {
     private DepartmentRepository departmentRepository;
 
     @Autowired
+    private CompanyRepository companyRepository;
+
+    @Autowired
+    private JobRepository jobRepository;
+
+    @Autowired
+    private ApplicationRepository applicationRepository;
+
+    @Autowired
+    private InterviewRepository interviewRepository;
+
+    @Autowired
+    private PlacementRepository placementRepository;
+
+    @Autowired
     private PasswordEncoder passwordEncoder;
 
     private MockMvc mockMvc;
@@ -57,6 +73,11 @@ class RoleAuthorizationIntegrationTest {
                 .apply(springSecurity())
                 .build();
 
+        interviewRepository.deleteAll();
+        placementRepository.deleteAll();
+        applicationRepository.deleteAll();
+        jobRepository.deleteAll();
+        companyRepository.deleteAll();
         appUserRepository.deleteAll();
         studentRepository.deleteAll();
         departmentRepository.deleteAll();
@@ -330,6 +351,321 @@ class RoleAuthorizationIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(invalidCgpaJson))
                 .andExpect(status().isBadRequest());
+    }
+
+    private Company createCompany(int id, String name) {
+        Company company = new Company();
+        company.setCompanyId(id);
+        company.setCompanyName(name);
+        company.setLocation("Bangalore");
+        company.setWebsite("https://" + name.toLowerCase() + ".com");
+        return companyRepository.save(company);
+    }
+
+    private Job createJob(int id, Company company, String title) {
+        Job job = new Job();
+        job.setJobId(id);
+        job.setCompany(company);
+        job.setJobTitle(title);
+        job.setJobDescription("Engineering role");
+        job.setMinCgpa(7.0);
+        job.setMaxBacklogs(1);
+        job.setDeadline(LocalDate.now().plusDays(30));
+        return jobRepository.save(job);
+    }
+
+    private Application createApplication(int id, Student student, Job job, String status) {
+        Application application = new Application();
+        application.setApplicationId(id);
+        application.setStudent(student);
+        application.setJob(job);
+        application.setApplicationDate(LocalDate.now());
+        application.setStatus(status);
+        return applicationRepository.save(application);
+    }
+
+    private Interview createInterview(int id, Application app, int roundNum, String roundType, String result) {
+        Interview interview = new Interview();
+        interview.setInterviewId(id);
+        interview.setApplication(app);
+        interview.setRoundNumber(roundNum);
+        interview.setRoundType(roundType);
+        interview.setInterviewDate(LocalDate.now().plusDays(5));
+        interview.setResult(result);
+        return interviewRepository.save(interview);
+    }
+
+    @Test
+    @DisplayName("Student cannot update application status, create or delete applications")
+    void studentCannotMutateApplications() throws Exception {
+        Company company = createCompany(10, "TechCorp");
+        Job job = createJob(10, company, "Frontend Developer");
+        Student student = studentRepository.findById(101).orElseThrow();
+        createApplication(501, student, job, "APPLIED");
+
+        // Status update
+        mockMvc.perform(put("/api/applications/501/status")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"SHORTLISTED\"}"))
+                .andExpect(status().isForbidden());
+
+        // Full application update
+        mockMvc.perform(put("/api/applications/501")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"applicationId\":501,\"status\":\"SHORTLISTED\"}"))
+                .andExpect(status().isForbidden());
+
+        // Create application directly via admin/officer endpoint
+        mockMvc.perform(post("/api/applications")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"applicationId\":502}"))
+                .andExpect(status().isForbidden());
+
+        // Delete application
+        mockMvc.perform(delete("/api/applications/501")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + studentToken))
+                .andExpect(status().isForbidden());
+
+        // Student attempt to update SELECTED application to SHORTLISTED
+        createApplication(508, student, job, "SELECTED");
+        mockMvc.perform(put("/api/applications/508/status")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"SHORTLISTED\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("Student cannot update interview results, schedule or delete interviews")
+    void studentCannotMutateInterviews() throws Exception {
+        Company company = createCompany(11, "CloudSys");
+        Job job = createJob(11, company, "DevOps Engineer");
+        Student student = studentRepository.findById(101).orElseThrow();
+        Application app = createApplication(502, student, job, "SHORTLISTED");
+        createInterview(601, app, 1, "Technical", "Pending");
+
+        // Result update
+        mockMvc.perform(put("/api/interviews/601/result")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"result\":\"Passed\"}"))
+                .andExpect(status().isForbidden());
+
+        // Full interview update
+        mockMvc.perform(put("/api/interviews/601")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"interviewId\":601,\"result\":\"Passed\"}"))
+                .andExpect(status().isForbidden());
+
+        // Schedule interview
+        mockMvc.perform(post("/api/interviews")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"interviewId\":602}"))
+                .andExpect(status().isForbidden());
+
+        // Delete interview
+        mockMvc.perform(delete("/api/interviews/601")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + studentToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("Placement Officer can progress application status through valid lifecycle")
+    void officerCanProgressApplicationStatus() throws Exception {
+        Company company = createCompany(12, "DataWorks");
+        Job job = createJob(12, company, "Data Analyst");
+        Student student = studentRepository.findById(101).orElseThrow();
+        createApplication(503, student, job, "APPLIED");
+
+        // APPLIED -> SHORTLISTED
+        mockMvc.perform(put("/api/applications/503/status")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + officerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"SHORTLISTED\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status", is("SHORTLISTED")));
+
+        // SHORTLISTED -> SELECTED
+        mockMvc.perform(put("/api/applications/503/status")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + officerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"SELECTED\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status", is("SELECTED")));
+
+        // SELECTED -> SHORTLISTED (Allowed correction when no placement exists)
+        mockMvc.perform(put("/api/applications/503/status")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + officerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"SHORTLISTED\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status", is("SHORTLISTED")));
+
+        // Re-advance SHORTLISTED -> SELECTED
+        mockMvc.perform(put("/api/applications/503/status")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + officerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"SELECTED\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status", is("SELECTED")));
+
+        // Invalid: Reverting SELECTED back to APPLIED
+        mockMvc.perform(put("/api/applications/503/status")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + officerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"APPLIED\"}"))
+                .andExpect(status().isConflict());
+
+        // Invalid: Same status
+        mockMvc.perform(put("/api/applications/503/status")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + officerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"SELECTED\"}"))
+                .andExpect(status().isBadRequest());
+
+        // Invalid: Unknown status value
+        mockMvc.perform(put("/api/applications/503/status")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + officerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"ON_HOLD\"}"))
+                .andExpect(status().isBadRequest());
+
+        // Non-existent application
+        mockMvc.perform(put("/api/applications/99999/status")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + officerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"SHORTLISTED\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("Cannot modify SELECTED application if placement record already exists")
+    void cannotModifySelectedApplicationWithExistingPlacement() throws Exception {
+        Company company = createCompany(13, "SecOps");
+        Job job = createJob(13, company, "Security Engineer");
+        Student student = studentRepository.findById(101).orElseThrow();
+        createApplication(504, student, job, "SELECTED");
+
+        Placement placement = new Placement();
+        placement.setPlacementId(901);
+        placement.setStudent(student);
+        placement.setCompany(company);
+        placement.setJob(job);
+        placement.setPlacementDate(LocalDate.now());
+        placement.setPackageAmount(1200000.0);
+        placementRepository.save(placement);
+
+        // Attempting to change status of placed application to SHORTLISTED is blocked
+        mockMvc.perform(put("/api/applications/504/status")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + officerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"SHORTLISTED\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(content().string("Cannot change status of an application that already has a finalized placement offer"));
+
+        // Attempting to change status of placed application to REJECTED is blocked
+        mockMvc.perform(put("/api/applications/504/status")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + officerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"REJECTED\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(content().string("Cannot change status of an application that already has a finalized placement offer"));
+    }
+
+    @Test
+    @DisplayName("Placement Officer and Admin can update interview results and outcomes")
+    void officerCanUpdateInterviewResult() throws Exception {
+        Company company = createCompany(14, "FinTech");
+        Job job = createJob(14, company, "Backend Engineer");
+        Student student = studentRepository.findById(101).orElseThrow();
+        Application app = createApplication(505, student, job, "SHORTLISTED");
+        createInterview(602, app, 1, "Technical", "Pending");
+
+        // Officer updates result to Passed
+        mockMvc.perform(put("/api/interviews/602/result")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + officerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"result\":\"Passed\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result", is("Passed")));
+
+        // Admin updates result to Failed (case-insensitive test)
+        mockMvc.perform(put("/api/interviews/602/result")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"result\":\"failed\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result", is("Failed")));
+
+        // Invalid result value
+        mockMvc.perform(put("/api/interviews/602/result")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + officerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"result\":\"UNKNOWN\"}"))
+                .andExpect(status().isBadRequest());
+
+        // Non-existent interview ID
+        mockMvc.perform(put("/api/interviews/99999/result")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + officerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"result\":\"Passed\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("Student can view only their own applications and interviews, not others")
+    void studentCanViewOnlyOwnApplicationsAndInterviews() throws Exception {
+        Company company = createCompany(15, "AI Corp");
+        Job job = createJob(15, company, "ML Engineer");
+
+        Student student1 = studentRepository.findById(101).orElseThrow();
+
+        Department dept = departmentRepository.findById(1).orElseThrow();
+        Student student2 = new Student();
+        student2.setStudentId(102);
+        student2.setName("Student Two");
+        student2.setEmail("student2@university.edu");
+        student2.setDepartment(dept);
+        student2.setGraduationYear(2025);
+        student2.setCgpa(8.0);
+        student2.setBacklogs(0);
+        student2.setPlacementStatus("NOT_PLACED");
+        student2 = studentRepository.save(student2);
+
+        Application app1 = createApplication(506, student1, job, "APPLIED");
+        Application app2 = createApplication(507, student2, job, "APPLIED");
+
+        createInterview(603, app1, 1, "Technical", "Pending");
+        createInterview(604, app2, 1, "Technical", "Pending");
+
+        // Student 1 lists applications: should only contain app1
+        mockMvc.perform(get("/api/applications")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].applicationId", is(506)));
+
+        // Student 1 tries to access student 2's application directly
+        mockMvc.perform(get("/api/applications/507")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + studentToken))
+                .andExpect(status().isForbidden());
+
+        // Student 1 lists interviews: should only contain int1
+        mockMvc.perform(get("/api/interviews")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].interviewId", is(603)));
+
+        // Student 1 tries to access student 2's interview directly
+        mockMvc.perform(get("/api/interviews/604")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + studentToken))
+                .andExpect(status().isForbidden());
     }
 }
 

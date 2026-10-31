@@ -1,19 +1,17 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   FileText,
   Plus,
+  Pencil,
   Trash2,
   Eye,
-  Building2,
-  Calendar,
-  GraduationCap,
-  Briefcase,
-  User,
+  AlertCircle,
 } from 'lucide-react';
 
 import { applicationsApi } from '../api/applications';
 import { studentsApi } from '../api/students';
 import { jobsApi } from '../api/jobs';
+import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 
 import Button from '../components/common/Button';
@@ -31,9 +29,11 @@ import FormSelect from '../components/forms/FormSelect';
 import { formatDate, formatSalary } from '../utils/formatters';
 
 const APPLICATION_STATUSES = ['APPLIED', 'SHORTLISTED', 'SELECTED', 'REJECTED'];
+const TODAY_DATE = new Date().toISOString().split('T')[0];
 
 export function ApplicationsPage() {
   const toast = useToast();
+  const { isStudent } = useAuth();
 
   const [applications, setApplications] = useState([]);
   const [students, setStudents] = useState([]);
@@ -54,16 +54,23 @@ export function ApplicationsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Status progression modal state
+  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
+  const [statusApp, setStatusApp] = useState(null);
+  const [newStatusValue, setNewStatusValue] = useState('APPLIED');
+  const [statusModalError, setStatusModalError] = useState(null);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+
   const [formData, setFormData] = useState({
     applicationId: '',
     studentId: '',
     jobId: '',
-    applicationDate: new Date().toISOString().split('T')[0],
+    applicationDate: TODAY_DATE,
     status: 'APPLIED',
   });
   const [formErrors, setFormErrors] = useState({});
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -81,11 +88,11 @@ export function ApplicationsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   const filteredApps = useMemo(() => {
     return applications.filter((app) => {
@@ -185,7 +192,7 @@ export function ApplicationsPage() {
         applicationId: '',
         studentId: '',
         jobId: '',
-        applicationDate: new Date().toISOString().split('T')[0],
+        applicationDate: TODAY_DATE,
         status: 'APPLIED',
       });
       loadData();
@@ -194,6 +201,37 @@ export function ApplicationsPage() {
       toast.error(err.message || 'Failed to record application. Note: Unique (studentId, jobId) constraint.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleOpenStatusModal = (app) => {
+    setStatusApp(app);
+    setNewStatusValue(app.status || 'APPLIED');
+    setStatusModalError(null);
+    setIsStatusModalOpen(true);
+  };
+
+  const handleSaveStatus = async (e) => {
+    if (e) e.preventDefault();
+    if (!statusApp) return;
+
+    try {
+      setIsUpdatingStatus(true);
+      setStatusModalError(null);
+      await applicationsApi.updateStatus(statusApp.applicationId, newStatusValue);
+      toast.success(`Application #${statusApp.applicationId} status updated to ${newStatusValue}`);
+      setIsStatusModalOpen(false);
+      if (selectedApp && selectedApp.applicationId === statusApp.applicationId) {
+        setSelectedApp({ ...selectedApp, status: newStatusValue });
+      }
+      loadData();
+    } catch (err) {
+      console.error('Failed to update application status:', err);
+      const backendError = err.message || 'Failed to update application status.';
+      setStatusModalError(backendError);
+      toast.error(backendError);
+    } finally {
+      setIsUpdatingStatus(false);
     }
   };
 
@@ -211,24 +249,28 @@ export function ApplicationsPage() {
       >
         <div>
           <h2 style={{ fontSize: '1.45rem', fontWeight: 700, margin: 0 }}>
-            Student Applications
+            {isStudent ? 'My Job Applications' : 'Student Applications'}
           </h2>
           <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
-            Candidate submissions, current review pipeline states, and scheduled hiring workflows.
+            {isStudent
+              ? 'Track review status, shortlist decisions, and application history for your job drives.'
+              : 'Candidate submissions, review pipeline states, and scheduled hiring workflows.'}
           </p>
         </div>
 
-        <Button
-          variant="primary"
-          icon={Plus}
-          onClick={() => {
-            setFormErrors({});
-            setIsCreateModalOpen(true);
-          }}
-          id="btn-create-application"
-        >
-          New Application
-        </Button>
+        {!isStudent && (
+          <Button
+            variant="primary"
+            icon={Plus}
+            onClick={() => {
+              setFormErrors({});
+              setIsCreateModalOpen(true);
+            }}
+            id="btn-create-application"
+          >
+            New Application
+          </Button>
+        )}
       </div>
 
       <div
@@ -348,16 +390,30 @@ export function ApplicationsPage() {
                         >
                           <Eye size={15} />
                         </button>
-                        <button
-                          type="button"
-                          className="icon-btn icon-btn-sm"
-                          onClick={() => setAppToDelete(app)}
-                          aria-label={`Delete application #${app.applicationId}`}
-                          title="Delete Application"
-                          style={{ color: 'var(--color-danger)' }}
-                        >
-                          <Trash2 size={15} />
-                        </button>
+                        {!isStudent && (
+                          <>
+                            <button
+                              type="button"
+                              className="icon-btn icon-btn-sm"
+                              onClick={() => handleOpenStatusModal(app)}
+                              aria-label={`Update status for application #${app.applicationId}`}
+                              title="Update Status"
+                              id={`btn-status-app-${app.applicationId}`}
+                            >
+                              <Pencil size={15} />
+                            </button>
+                            <button
+                              type="button"
+                              className="icon-btn icon-btn-sm"
+                              onClick={() => setAppToDelete(app)}
+                              aria-label={`Delete application #${app.applicationId}`}
+                              title="Delete Application"
+                              style={{ color: 'var(--color-danger)' }}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -440,7 +496,108 @@ export function ApplicationsPage() {
                   Company: {selectedApp.job?.company?.companyName} • Compensation: {formatSalary(selectedApp.job?.packageAmount)}
                 </div>
               </div>
+
+              {!isStudent && (
+                <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Pipeline Action</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    icon={Pencil}
+                    onClick={() => {
+                      setIsViewModalOpen(false);
+                      handleOpenStatusModal(selectedApp);
+                    }}
+                  >
+                    Change Status
+                  </Button>
+                </div>
+              )}
             </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Update Application Status Modal */}
+      <Modal
+        isOpen={isStatusModalOpen}
+        onClose={() => setIsStatusModalOpen(false)}
+        title={`Update Status — Application #${statusApp?.applicationId}`}
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => setIsStatusModalOpen(false)}
+              disabled={isUpdatingStatus}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleSaveStatus}
+              isLoading={isUpdatingStatus}
+              id="submit-update-app-status-btn"
+            >
+              Update Status
+            </Button>
+          </>
+        }
+      >
+        {statusApp && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {statusModalError && (
+              <div
+                style={{
+                  padding: '0.75rem 1rem',
+                  backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                  border: '1px solid var(--color-danger)',
+                  borderRadius: 'var(--radius-md)',
+                  color: 'var(--color-danger)',
+                  fontSize: '0.85rem',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '0.5rem',
+                  lineHeight: '1.4',
+                }}
+                role="alert"
+              >
+                <AlertCircle size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
+                <span>{statusModalError}</span>
+              </div>
+            )}
+
+            <div style={{ backgroundColor: 'var(--color-surface-hover)', padding: '0.85rem', borderRadius: 'var(--radius-md)', fontSize: '0.85rem' }}>
+              <div><strong>Candidate:</strong> {statusApp.student?.name} (ID: #{statusApp.student?.studentId})</div>
+              <div style={{ marginTop: '0.25rem' }}><strong>Target Role:</strong> {statusApp.job?.jobTitle} • {statusApp.job?.company?.companyName}</div>
+              <div style={{ marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <strong>Current Status:</strong>
+                <StatusBadge status={statusApp.status} />
+              </div>
+            </div>
+
+            <FormSelect
+              label="New Pipeline Status"
+              name="pipelineStatus"
+              value={newStatusValue}
+              onChange={(e) => {
+                setNewStatusValue(e.target.value);
+                setStatusModalError(null);
+              }}
+              options={APPLICATION_STATUSES.map((st) => ({
+                value: st,
+                label: st,
+              }))}
+              required
+              helpText={
+                newStatusValue === 'SHORTLISTED'
+                  ? 'Shortlists candidate for technical and HR interview rounds.'
+                  : newStatusValue === 'SELECTED'
+                  ? 'Marks candidate as selected and ready for placement offer recording.'
+                  : newStatusValue === 'REJECTED'
+                  ? 'Marks candidate as screened out for this job opportunity.'
+                  : 'Initial submission status.'
+              }
+            />
           </div>
         )}
       </Modal>

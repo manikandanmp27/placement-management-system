@@ -35,6 +35,24 @@ public class ApplicationController {
         return applicationService.saveApplication(application);
     }
 
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('PLACEMENT_OFFICER', 'ADMIN')")
+    public Application updateApplication(@PathVariable Integer id, @RequestBody(required = false) Application application) {
+        if (application == null) {
+            throw new IllegalArgumentException("Request body cannot be empty");
+        }
+        return applicationService.updateApplication(id, application);
+    }
+
+    @PutMapping("/{id}/status")
+    @PreAuthorize("hasAnyRole('PLACEMENT_OFFICER', 'ADMIN')")
+    public Application updateApplicationStatus(@PathVariable Integer id, @RequestBody com.example.placement_management_system.dto.UpdateApplicationStatusRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Request body cannot be empty");
+        }
+        return applicationService.updateApplicationStatus(id, request.getStatus());
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('PLACEMENT_OFFICER', 'ADMIN')")
     public void deleteApplication(@PathVariable Integer id) {

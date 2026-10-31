@@ -86,11 +86,22 @@ async function request(endpoint, options = {}) {
         }
       }
 
-      const errorMessage =
-        (typeof data === 'string' && data) ||
-        data?.message ||
-        data?.error ||
-        `Request failed with status ${response.status} (${response.statusText})`;
+      let errorMessage = '';
+      if (typeof data === 'string' && data.trim()) {
+        errorMessage = data.trim();
+      } else if (data && typeof data === 'object') {
+        if (typeof data.message === 'string' && data.message.trim()) {
+          errorMessage = data.message.trim();
+        } else if (typeof data.error === 'string' && data.error.trim()) {
+          errorMessage = data.error.trim();
+        } else if (typeof data.detail === 'string' && data.detail.trim()) {
+          errorMessage = data.detail.trim();
+        }
+      }
+
+      if (!errorMessage) {
+        errorMessage = `Request failed with status ${response.status} (${response.statusText})`;
+      }
 
       const error = new Error(errorMessage);
       error.status = response.status;
