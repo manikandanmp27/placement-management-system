@@ -1,10 +1,22 @@
 import apiClient from './client';
 
 export const proceduresApi = {
-  
-  applyForJob: (studentId, jobId) => {
-    return apiClient.post('/procedures/apply', null, { studentId, jobId });
+  applyForJob: (studentIdOrJobId, maybeJobId) => {
+    let studentId = null;
+    let jobId;
+    if (maybeJobId !== undefined) {
+      studentId = studentIdOrJobId;
+      jobId = maybeJobId;
+    } else {
+      jobId = studentIdOrJobId;
+    }
+    const params = { jobId };
+    if (studentId !== null && studentId !== undefined && studentId !== '') {
+      params.studentId = studentId;
+    }
+    return apiClient.post('/procedures/apply', null, params);
   },
+
 
   getPlacementStatistics: async (departmentId) => {
     const rawData = await apiClient.get('/procedures/placement-statistics', { departmentId });

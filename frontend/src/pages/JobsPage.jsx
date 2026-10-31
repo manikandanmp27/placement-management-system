@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Briefcase,
   Plus,
@@ -6,18 +6,18 @@ import {
   Eye,
   Send,
   Building2,
-  Calendar,
   AlertCircle,
-  Clock,
   CheckCircle2,
-  DollarSign,
   GraduationCap,
+  User,
 } from 'lucide-react';
 
 import { jobsApi } from '../api/jobs';
 import { companiesApi } from '../api/companies';
 import { studentsApi } from '../api/students';
+import { applicationsApi } from '../api/applications';
 import { proceduresApi } from '../api/procedures';
+import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 
 import Button from '../components/common/Button';
@@ -36,10 +36,13 @@ import { formatDate, formatSalary, isExpired } from '../utils/formatters';
 
 export function JobsPage() {
   const toast = useToast();
+  const { user, isStudent } = useAuth();
 
   const [jobs, setJobs] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [students, setStudents] = useState([]);
+  const [studentProfile, setStudentProfile] = useState(null);
+  const [userApplications, setUserApplications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -72,29 +75,109 @@ export function JobsPage() {
   });
   const [formErrors, setFormErrors] = useState({});
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const [jobsData, companiesData, studentsData] = await Promise.all([
-        jobsApi.getAll(),
-        companiesApi.getAll().catch(() => []),
-        studentsApi.getAll().catch(() => []),
-      ]);
-      setJobs(Array.isArray(jobsData) ? jobsData : []);
-      setCompanies(Array.isArray(companiesData) ? companiesData : []);
-      setStudents(Array.isArray(studentsData) ? studentsData : []);
+
+      if (isStudent) {
+        const [jobsData, companiesData, appsData, profileData] = await Promise.all([
+          jobsApi.getAll(),
+          companiesApi.getAll().catch(() => []),
+          applicationsApi.getAll().catch(() => []),
+          user?.studentId ? studentsApi.getById(user.studentId).catch(() => null) : Promise.resolve(null),
+        ]);
+        setJobs(Array.isArray(jobsData) ? jobsData : []);
+        setCompanies(Array.isArray(companiesData) ? companiesData : []);
+        setUserApplications(Array.isArray(appsData) ? appsData : []);
+        setStudentProfile(profileData);
+      } else {
+        const [jobsData, companiesData, studentsData] = await Promise.all([
+          jobsApi.getAll(),
+          companiesApi.getAll().catch(() => []),
+          studentsApi.getAll().catch(() => []),
+        ]);
+        setJobs(Array.isArray(jobsData) ? jobsData : []);
+        setCompanies(Array.isArray(companiesData) ? companiesData : []);
+        setStudents(Array.isArray(studentsData) ? studentsData : []);
+      }
     } catch (err) {
       console.error('Failed to load jobs data:', err);
       setError(err.message || 'Failed to fetch job records.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [isStudent, user]);
+
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
+
+  const userApplicationsMap = useMemo(() => {
+    const map = {};
+    if (Array.isArray(userApplications)) {
+      userApplications.forEach((app) => {
+        const jId = app.job?.jobId || app.jobId;
+        if (jId) {
+          map[jId] = app;
+        }
+      });
+    }
+    return map;
+  }, [userApplications]);
+
+  const getEligibilityStatus = useCallback((job) => {
+    if (!isStudent) return { eligible: true };
+
+    const existingApp = userApplicationsMap[job.jobId];
+    if (existingApp) {
+      return {
+        eligible: false,
+        alreadyApplied: true,
+        status: existingApp.status || 'APPLIED',
+        reason: `Already applied (Status: ${existingApp.status || 'APPLIED'})`,
+      };
+    }
+
+    const expired = isExpired(job.deadline);
+    if (expired) {
+      return {
+        eligible: false,
+        expired: true,
+        reason: 'Application deadline has passed',
+      };
+    }
+
+    if (studentProfile) {
+      if (studentProfile.placementStatus === 'PLACED') {
+        return {
+          eligible: false,
+          placed: true,
+          reason: 'Already placed with an employer',
+        };
+      }
+      if (job.minCgpa !== null && job.minCgpa !== undefined && studentProfile.cgpa < job.minCgpa) {
+        return {
+          eligible: false,
+          cgpaFailed: true,
+          reason: `CGPA (${studentProfile.cgpa}) is below required minimum (${job.minCgpa})`,
+        };
+      }
+      if (job.maxBacklogs !== null && job.maxBacklogs !== undefined && studentProfile.backlogs > job.maxBacklogs) {
+        return {
+          eligible: false,
+          backlogsFailed: true,
+          reason: `Active backlogs (${studentProfile.backlogs}) exceed maximum allowed (${job.maxBacklogs})`,
+        };
+      }
+    }
+
+    return {
+      eligible: true,
+      reason: 'Meets all eligibility criteria',
+    };
+  }, [isStudent, userApplicationsMap, studentProfile]);
 
   const filteredJobs = useMemo(() => {
     return jobs.filter((j) => {
@@ -149,31 +232,63 @@ export function JobsPage() {
 
   const handleApplyProcedure = async (e) => {
     e.preventDefault();
-    if (!applyJob || !selectedStudentId) {
-      setApplyError('Please select a student to apply.');
-      return;
-    }
 
-    try {
-      setIsApplying(true);
-      setApplyError(null);
+    if (isStudent) {
+      if (!applyJob) return;
+      const eligibility = getEligibilityStatus(applyJob);
+      if (!eligibility.eligible) {
+        setApplyError(eligibility.reason);
+        return;
+      }
 
-      await proceduresApi.applyForJob(Number(selectedStudentId), Number(applyJob.jobId));
+      try {
+        setIsApplying(true);
+        setApplyError(null);
 
-      toast.success(
-        `Application submitted successfully for Job #${applyJob.jobId} (${applyJob.jobTitle})!`
-      );
-      setApplyJob(null);
-      loadData();
-    } catch (err) {
-      console.error('Apply procedure failed:', err);
-      
-      const errorMsg =
-        err.message || 'Application could not be processed due to eligibility or duplicate constraints.';
-      setApplyError(errorMsg);
-      toast.error(errorMsg, 'Application Ineligible');
-    } finally {
-      setIsApplying(false);
+        // Student applies directly using authenticated principal (no frontend-supplied student ID)
+        await proceduresApi.applyForJob(Number(applyJob.jobId));
+
+        toast.success(
+          `Application submitted successfully for Job #${applyJob.jobId} (${applyJob.jobTitle})!`
+        );
+        setApplyJob(null);
+        loadData();
+      } catch (err) {
+        console.error('Apply procedure failed:', err);
+        const errorMsg =
+          err?.data || err?.message || 'Application could not be processed due to eligibility or duplicate constraints.';
+        setApplyError(errorMsg);
+        toast.error(errorMsg, 'Application Error');
+      } finally {
+        setIsApplying(false);
+      }
+    } else {
+      // Officer / Admin flow
+      if (!applyJob || !selectedStudentId) {
+        setApplyError('Please select a student candidate to apply.');
+        return;
+      }
+
+      try {
+        setIsApplying(true);
+        setApplyError(null);
+
+        await proceduresApi.applyForJob(Number(selectedStudentId), Number(applyJob.jobId));
+
+        toast.success(
+          `Application submitted successfully for Job #${applyJob.jobId} (${applyJob.jobTitle})!`
+        );
+        setApplyJob(null);
+        loadData();
+      } catch (err) {
+        console.error('Apply procedure failed:', err);
+        const errorMsg =
+          err?.data || err?.message || 'Application could not be processed due to eligibility or duplicate constraints.';
+        setApplyError(errorMsg);
+        toast.error(errorMsg, 'Application Ineligible');
+      } finally {
+        setIsApplying(false);
+      }
     }
   };
 
@@ -255,6 +370,7 @@ export function JobsPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       
+      {/* Header section */}
       <div
         style={{
           display: 'flex',
@@ -273,19 +389,111 @@ export function JobsPage() {
           </p>
         </div>
 
-        <Button
-          variant="primary"
-          icon={Plus}
-          onClick={() => {
-            setFormErrors({});
-            setIsCreateModalOpen(true);
-          }}
-          id="btn-post-job"
-        >
-          Post New Job
-        </Button>
+        {!isStudent && (
+          <Button
+            variant="primary"
+            icon={Plus}
+            onClick={() => {
+              setFormErrors({});
+              setIsCreateModalOpen(true);
+            }}
+            id="btn-post-job"
+          >
+            Post New Job
+          </Button>
+        )}
       </div>
 
+      {/* Student Eligibility Profile Banner */}
+      {isStudent && studentProfile && (
+        <div
+          className="card"
+          style={{
+            padding: '1.25rem 1.5rem',
+            background: 'linear-gradient(135deg, var(--color-surface) 0%, var(--color-surface-hover) 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '1.25rem',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div
+              style={{
+                width: '3rem',
+                height: '3rem',
+                borderRadius: 'var(--radius-md)',
+                backgroundColor: 'var(--color-primary-subtle)',
+                color: 'var(--color-primary)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <GraduationCap size={24} />
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>
+                  {studentProfile.name}
+                </h3>
+                <span className="badge badge-neutral">ID #{studentProfile.studentId}</span>
+              </div>
+              <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>
+                {studentProfile.department?.departmentName || 'Enrolled Student'} • Class of {studentProfile.graduationYear}
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1.75rem', flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontSize: '0.725rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Your CGPA
+              </div>
+              <div style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                {studentProfile.cgpa}
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontSize: '0.725rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Active Backlogs
+              </div>
+              <div
+                style={{
+                  fontSize: '1.2rem',
+                  fontWeight: 700,
+                  color: studentProfile.backlogs > 0 ? 'var(--color-danger)' : 'var(--color-success)',
+                }}
+              >
+                {studentProfile.backlogs}
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontSize: '0.725rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Placement Status
+              </div>
+              <div style={{ marginTop: '2px' }}>
+                <StatusBadge status={studentProfile.placementStatus} />
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontSize: '0.725rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Submitted Applications
+              </div>
+              <div style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--color-primary)' }}>
+                {Object.keys(userApplicationsMap).length}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Search and Filters Bar */}
       <div
         className="card"
         style={{
@@ -310,7 +518,7 @@ export function JobsPage() {
               className="form-select"
               value={companyFilter}
               onChange={(e) => setCompanyFilter(e.target.value)}
-              aria-label="Filter by company"
+              aria-label="Filter by Company"
             >
               <option value="">All Companies</option>
               {companies.map((c) => (
@@ -326,24 +534,29 @@ export function JobsPage() {
               className="form-select"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              aria-label="Filter by deadline status"
+              aria-label="Filter by Deadline Status"
             >
-              <option value="">All Deadlines</option>
-              <option value="ACTIVE">Active Deadlines</option>
-              <option value="EXPIRED">Expired Deadlines</option>
+              <option value="">All Postings</option>
+              <option value="ACTIVE">Active (Accepting)</option>
+              <option value="EXPIRED">Expired</option>
             </select>
           </div>
         </div>
 
-        <div style={{ fontSize: '0.825rem', color: 'var(--color-text-secondary)' }}>
-          Total Openings: <strong>{filteredJobs.length}</strong>
+        <div style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', fontWeight: 500 }}>
+          Showing <strong>{filteredJobs.length}</strong> of <strong>{jobs.length}</strong> positions
         </div>
       </div>
 
+      {/* Main Content Area */}
       {loading ? (
-        <SkeletonTable rows={6} cols={7} />
+        <SkeletonTable rows={5} columns={6} />
       ) : error ? (
-        <ErrorState message={error} onRetry={loadData} />
+        <ErrorState
+          title="Could Not Load Job Openings"
+          message={error}
+          onRetry={loadData}
+        />
       ) : filteredJobs.length === 0 ? (
         <EmptyState
           icon={Briefcase}
@@ -353,9 +566,9 @@ export function JobsPage() {
               ? 'No jobs match your filter criteria. Try clearing the filters.'
               : 'There are currently no job opportunities posted.'
           }
-          actionText="Post New Job"
-          actionIcon={Plus}
-          onAction={() => setIsCreateModalOpen(true)}
+          actionText={!isStudent ? 'Post New Job' : undefined}
+          actionIcon={!isStudent ? Plus : undefined}
+          onAction={!isStudent ? () => setIsCreateModalOpen(true) : undefined}
         />
       ) : (
         <div className="card" style={{ overflow: 'hidden' }}>
@@ -375,6 +588,8 @@ export function JobsPage() {
               <tbody>
                 {filteredJobs.map((job) => {
                   const expired = isExpired(job.deadline);
+                  const eligibility = getEligibilityStatus(job);
+
                   return (
                     <tr key={job.jobId}>
                       <td style={{ fontWeight: 600, color: 'var(--color-text-muted)' }}>
@@ -403,6 +618,29 @@ export function JobsPage() {
                         <div style={{ fontSize: '0.785rem', color: 'var(--color-text-secondary)' }}>
                           <div>Min CGPA: <strong>{job.minCgpa ?? '—'}</strong></div>
                           <div>Max Backlogs: <strong>{job.maxBacklogs ?? 0}</strong></div>
+                          
+                          {/* Student Specific Eligibility Badge */}
+                          {isStudent && (
+                            <div style={{ marginTop: '0.35rem' }}>
+                              {eligibility.alreadyApplied ? (
+                                <span className="badge badge-info" title={eligibility.reason}>
+                                  Applied: {eligibility.status}
+                                </span>
+                              ) : eligibility.expired ? (
+                                <span className="badge badge-warning" title={eligibility.reason}>
+                                  Deadline Passed
+                                </span>
+                              ) : eligibility.eligible ? (
+                                <span className="badge badge-success">
+                                  <CheckCircle2 size={11} /> Eligible
+                                </span>
+                              ) : (
+                                <span className="badge badge-danger" title={eligibility.reason}>
+                                  <AlertCircle size={11} /> Ineligible
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </td>
                       <td>
@@ -419,17 +657,62 @@ export function JobsPage() {
                       </td>
                       <td style={{ textAlign: 'right' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            icon={Send}
-                            onClick={() => handleOpenApply(job)}
-                            disabled={expired}
-                            title={expired ? 'Application deadline expired' : 'Apply for this job'}
-                            id={`btn-apply-job-${job.jobId}`}
-                          >
-                            Apply
-                          </Button>
+                          {/* Apply action button */}
+                          {isStudent ? (
+                            eligibility.alreadyApplied ? (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                icon={CheckCircle2}
+                                disabled
+                                title={`Already applied (Status: ${eligibility.status})`}
+                              >
+                                Applied
+                              </Button>
+                            ) : eligibility.expired ? (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                disabled
+                                title="Application deadline has passed"
+                              >
+                                Expired
+                              </Button>
+                            ) : !eligibility.eligible ? (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                disabled
+                                title={eligibility.reason}
+                              >
+                                Ineligible
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                icon={Send}
+                                onClick={() => handleOpenApply(job)}
+                                id={`btn-apply-job-${job.jobId}`}
+                              >
+                                Apply Now
+                              </Button>
+                            )
+                          ) : (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              icon={Send}
+                              onClick={() => handleOpenApply(job)}
+                              disabled={expired}
+                              title={expired ? 'Application deadline expired' : 'Apply candidate for this job'}
+                              id={`btn-apply-job-${job.jobId}`}
+                            >
+                              Apply
+                            </Button>
+                          )}
+
+                          {/* View details */}
                           <button
                             type="button"
                             className="icon-btn icon-btn-sm"
@@ -439,16 +722,20 @@ export function JobsPage() {
                           >
                             <Eye size={15} />
                           </button>
-                          <button
-                            type="button"
-                            className="icon-btn icon-btn-sm"
-                            onClick={() => setJobToDelete(job)}
-                            aria-label={`Delete job ${job.jobTitle}`}
-                            title="Delete Job"
-                            style={{ color: 'var(--color-danger)' }}
-                          >
-                            <Trash2 size={15} />
-                          </button>
+
+                          {/* Delete action: Officer/Admin only */}
+                          {!isStudent && (
+                            <button
+                              type="button"
+                              className="icon-btn icon-btn-sm"
+                              onClick={() => setJobToDelete(job)}
+                              aria-label={`Delete job ${job.jobTitle}`}
+                              title="Delete Job"
+                              style={{ color: 'var(--color-danger)' }}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -460,10 +747,11 @@ export function JobsPage() {
         </div>
       )}
 
+      {/* Apply Candidate Modal */}
       <Modal
         isOpen={!!applyJob}
         onClose={() => setApplyJob(null)}
-        title={`Apply Candidate for Job #${applyJob?.jobId}`}
+        title={isStudent ? `Apply for ${applyJob?.jobTitle}` : `Apply Candidate for Job #${applyJob?.jobId}`}
         footer={
           <>
             <Button
@@ -473,23 +761,35 @@ export function JobsPage() {
             >
               Cancel
             </Button>
-            <Button
-              variant="primary"
-              icon={Send}
-              onClick={handleApplyProcedure}
-              isLoading={isApplying}
-              disabled={!selectedStudentId}
-              id="submit-apply-procedure-btn"
-            >
-              Submit Application
-            </Button>
+            {isStudent ? (
+              <Button
+                variant="primary"
+                icon={Send}
+                onClick={handleApplyProcedure}
+                isLoading={isApplying}
+                disabled={applyJob && !getEligibilityStatus(applyJob).eligible}
+                id="submit-apply-procedure-btn"
+              >
+                Confirm & Submit Application
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                icon={Send}
+                onClick={handleApplyProcedure}
+                isLoading={isApplying}
+                disabled={!selectedStudentId}
+                id="submit-apply-procedure-btn"
+              >
+                Submit Application
+              </Button>
+            )}
           </>
         }
       >
         {applyJob && (
           <form onSubmit={handleApplyProcedure}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              
               <div
                 style={{
                   backgroundColor: 'var(--color-surface-hover)',
@@ -504,7 +804,7 @@ export function JobsPage() {
                 <div style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
                   Company: <strong>{applyJob.company?.companyName}</strong> • Package: <strong>{formatSalary(applyJob.packageAmount)}</strong>
                 </div>
-                <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', fontSize: '0.785rem' }}>
+                <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', fontSize: '0.785rem', flexWrap: 'wrap' }}>
                   <span>Required CGPA: <strong>≥ {applyJob.minCgpa}</strong></span>
                   <span>Max Backlogs: <strong>≤ {applyJob.maxBacklogs}</strong></span>
                   <span>Deadline: <strong>{formatDate(applyJob.deadline)}</strong></span>
@@ -527,52 +827,157 @@ export function JobsPage() {
                 >
                   <AlertCircle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
                   <div>
-                    <strong>Procedure Error:</strong> {applyError}
+                    <strong>Application Error:</strong> {applyError}
                   </div>
                 </div>
               )}
 
-              <div>
-                <label className="form-label" htmlFor="select-candidate-student">
-                  Select Student Candidate <span className="form-required">*</span>
-                </label>
-                <select
-                  id="select-candidate-student"
-                  className="form-select"
-                  value={selectedStudentId}
-                  onChange={(e) => {
-                    setSelectedStudentId(e.target.value);
-                    setApplyError(null);
-                  }}
-                  required
-                >
-                  <option value="" disabled>
-                    Choose an enrolled student...
-                  </option>
-                  {students.map((s) => (
-                    <option key={s.studentId} value={s.studentId}>
-                      {s.name} (ID: {s.studentId}) — CGPA: {s.cgpa}, Backlogs: {s.backlogs}, Status: {s.placementStatus}
-                    </option>
-                  ))}
-                </select>
-                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '4px' }}>
-                  Procedure executes verification: checks candidate existence, unplaced status, CGPA requirement, backlogs, and prevents duplicate applications.
+              {/* Student specific confirmation vs Officer selection */}
+              {isStudent ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <div
+                    style={{
+                      border: '1px solid var(--color-border)',
+                      borderRadius: 'var(--radius-md)',
+                      padding: '0.85rem 1rem',
+                      backgroundColor: 'var(--color-surface)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
+                      <User size={14} style={{ color: 'var(--color-primary)' }} />
+                      <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+                        Candidate Roll Information
+                      </span>
+                    </div>
+                    <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>
+                      {studentProfile?.name || user?.email} (Student ID #{user?.studentId})
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', marginTop: '0.25rem' }}>
+                      CGPA: <strong>{studentProfile?.cgpa ?? '—'}</strong> • Active Backlogs: <strong>{studentProfile?.backlogs ?? '—'}</strong> • Placement Status: <strong>{studentProfile?.placementStatus ?? '—'}</strong>
+                    </div>
+                  </div>
+
+                  {(() => {
+                    const status = getEligibilityStatus(applyJob);
+                    if (status.eligible) {
+                      return (
+                        <div
+                          style={{
+                            padding: '0.75rem 1rem',
+                            backgroundColor: 'var(--color-success-bg)',
+                            border: '1px solid var(--color-success-border)',
+                            color: 'var(--color-success-text)',
+                            borderRadius: 'var(--radius-md)',
+                            fontSize: '0.85rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                          }}
+                        >
+                          <CheckCircle2 size={18} style={{ flexShrink: 0 }} />
+                          <span>You meet all academic criteria (CGPA ≥ {applyJob.minCgpa}, backlogs ≤ {applyJob.maxBacklogs}) and are eligible to apply.</span>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div
+                        style={{
+                          padding: '0.75rem 1rem',
+                          backgroundColor: 'var(--color-danger-bg)',
+                          border: '1px solid var(--color-danger-border)',
+                          color: 'var(--color-danger-text)',
+                          borderRadius: 'var(--radius-md)',
+                          fontSize: '0.85rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem',
+                        }}
+                      >
+                        <AlertCircle size={18} style={{ flexShrink: 0 }} />
+                        <span>Ineligible to apply: {status.reason}</span>
+                      </div>
+                    );
+                  })()}
+
+                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                    Your application will be submitted directly via the stored procedure using your authenticated student roll number.
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div>
+                  <label className="form-label" htmlFor="select-candidate-student">
+                    Select Student Candidate <span className="form-required">*</span>
+                  </label>
+                  <select
+                    id="select-candidate-student"
+                    className="form-select"
+                    value={selectedStudentId}
+                    onChange={(e) => {
+                      setSelectedStudentId(e.target.value);
+                      setApplyError(null);
+                    }}
+                    required
+                  >
+                    <option value="" disabled>
+                      Choose an enrolled student...
+                    </option>
+                    {students.map((s) => (
+                      <option key={s.studentId} value={s.studentId}>
+                        {s.name} (ID: {s.studentId}) — CGPA: {s.cgpa}, Backlogs: {s.backlogs}, Status: {s.placementStatus}
+                      </option>
+                    ))}
+                  </select>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '4px' }}>
+                    Procedure executes verification: checks candidate existence, unplaced status, CGPA requirement, backlogs, and prevents duplicate applications.
+                  </div>
+                </div>
+              )}
             </div>
           </form>
         )}
       </Modal>
 
+      {/* View Job Opening Modal */}
       <Modal
         isOpen={isViewModalOpen}
         onClose={() => setIsViewModalOpen(false)}
         title="Job Opening Details"
         size="lg"
         footer={
-          <Button variant="secondary" onClick={() => setIsViewModalOpen(false)}>
-            Close
-          </Button>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.75rem', width: '100%' }}>
+            <Button variant="secondary" onClick={() => setIsViewModalOpen(false)}>
+              Close
+            </Button>
+            {isStudent && selectedJob && (() => {
+              const status = getEligibilityStatus(selectedJob);
+              if (status.alreadyApplied) {
+                return (
+                  <Button variant="secondary" icon={CheckCircle2} disabled>
+                    Applied ({status.status})
+                  </Button>
+                );
+              }
+              if (status.eligible) {
+                return (
+                  <Button
+                    variant="primary"
+                    icon={Send}
+                    onClick={() => {
+                      setIsViewModalOpen(false);
+                      handleOpenApply(selectedJob);
+                    }}
+                  >
+                    Apply for this Job
+                  </Button>
+                );
+              }
+              return (
+                <Button variant="secondary" disabled title={status.reason}>
+                  Ineligible
+                </Button>
+              );
+            })()}
+          </div>
         }
       >
         {selectedJob && (
@@ -630,6 +1035,37 @@ export function JobsPage() {
               </div>
             </div>
 
+            {/* Student specific eligibility breakdown inside view modal */}
+            {isStudent && (
+              <div
+                style={{
+                  border: '1px solid var(--color-border)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '1rem',
+                  backgroundColor: 'var(--color-surface)',
+                }}
+              >
+                <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--color-text-primary)' }}>
+                  Your Eligibility Assessment
+                </div>
+                {(() => {
+                  const status = getEligibilityStatus(selectedJob);
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.825rem' }}>
+                      <div>
+                        Status: <strong>{status.alreadyApplied ? `Already Applied (${status.status})` : status.eligible ? 'Eligible' : 'Ineligible'}</strong>
+                      </div>
+                      {!status.eligible && (
+                        <div style={{ color: 'var(--color-danger)' }}>
+                          Reason: {status.reason}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
             <div>
               <h4 style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.5rem' }}>
                 Role Description & Requirements
@@ -642,144 +1078,148 @@ export function JobsPage() {
         )}
       </Modal>
 
-      <Modal
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        title="Post New Job Opening"
-        size="lg"
-        footer={
-          <>
-            <Button
-              variant="secondary"
-              onClick={() => setIsCreateModalOpen(false)}
-              disabled={isSubmitting}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              onClick={handleCreateJob}
-              isLoading={isSubmitting}
-              id="submit-post-job-btn"
-            >
-              Publish Job
-            </Button>
-          </>
-        }
-      >
-        <form onSubmit={handleCreateJob}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
-            <FormInput
-              label="Job ID"
-              name="jobId"
-              type="number"
-              value={formData.jobId}
-              onChange={(e) => setFormData({ ...formData, jobId: e.target.value })}
-              placeholder="e.g. 209"
-              required
-              error={formErrors.jobId}
-              helpText="Unique numeric job identifier"
-            />
+      {/* Post New Job Opening Modal: Officer/Admin only */}
+      {!isStudent && (
+        <Modal
+          isOpen={isCreateModalOpen}
+          onClose={() => setIsCreateModalOpen(false)}
+          title="Post New Job Opening"
+          size="lg"
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => setIsCreateModalOpen(false)}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={handleCreateJob}
+                isLoading={isSubmitting}
+                id="submit-post-job-btn"
+              >
+                Publish Job
+              </Button>
+            </>
+          }
+        >
+          <form onSubmit={handleCreateJob}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+              <FormInput
+                label="Job ID"
+                name="jobId"
+                type="number"
+                value={formData.jobId}
+                onChange={(e) => setFormData({ ...formData, jobId: e.target.value })}
+                placeholder="e.g. 209"
+                required
+                error={formErrors.jobId}
+                helpText="Unique numeric job identifier"
+              />
 
-            <FormSelect
-              label="Hiring Company"
-              name="companyId"
-              value={formData.companyId}
-              onChange={(e) => setFormData({ ...formData, companyId: e.target.value })}
-              options={companies.map((c) => ({
-                value: c.companyId,
-                label: c.companyName,
-              }))}
-              required
-              error={formErrors.companyId}
-            />
+              <FormSelect
+                label="Hiring Company"
+                name="companyId"
+                value={formData.companyId}
+                onChange={(e) => setFormData({ ...formData, companyId: e.target.value })}
+                options={companies.map((c) => ({
+                  value: c.companyId,
+                  label: c.companyName,
+                }))}
+                required
+                error={formErrors.companyId}
+              />
 
-            <FormInput
-              label="Job Title / Role"
-              name="jobTitle"
-              value={formData.jobTitle}
-              onChange={(e) => setFormData({ ...formData, jobTitle: e.target.value })}
-              placeholder="e.g. Software Engineer"
-              required
-              error={formErrors.jobTitle}
-            />
+              <FormInput
+                label="Job Title / Role"
+                name="jobTitle"
+                value={formData.jobTitle}
+                onChange={(e) => setFormData({ ...formData, jobTitle: e.target.value })}
+                placeholder="e.g. Software Engineer"
+                required
+                error={formErrors.jobTitle}
+              />
 
-            <FormSelect
-              label="Job Type"
-              name="jobType"
-              value={formData.jobType}
-              onChange={(e) => setFormData({ ...formData, jobType: e.target.value })}
-              options={[
-                { value: 'Full Time', label: 'Full Time' },
-                { value: 'Internship', label: 'Internship' },
-                { value: 'Contract', label: 'Contract' },
-              ]}
-              required
-            />
+              <FormSelect
+                label="Job Type"
+                name="jobType"
+                value={formData.jobType}
+                onChange={(e) => setFormData({ ...formData, jobType: e.target.value })}
+                options={[
+                  { value: 'Full Time', label: 'Full Time' },
+                  { value: 'Internship', label: 'Internship' },
+                  { value: 'Contract', label: 'Contract' },
+                ]}
+                required
+              />
 
-            <FormInput
-              label="Annual Package (CTC in INR)"
-              name="packageAmount"
-              type="number"
-              step="1000"
-              value={formData.packageAmount}
-              onChange={(e) => setFormData({ ...formData, packageAmount: e.target.value })}
-              placeholder="e.g. 800000"
-              required
-              error={formErrors.packageAmount}
-              helpText="e.g. 800000 = ₹8.00 LPA"
-            />
+              <FormInput
+                label="Annual Package (CTC in INR)"
+                name="packageAmount"
+                type="number"
+                step="1000"
+                value={formData.packageAmount}
+                onChange={(e) => setFormData({ ...formData, packageAmount: e.target.value })}
+                placeholder="e.g. 800000"
+                required
+                error={formErrors.packageAmount}
+                helpText="e.g. 800000 = ₹8.00 LPA"
+              />
 
-            <FormInput
-              label="Minimum CGPA"
-              name="minCgpa"
-              type="number"
-              step="0.01"
-              min="0"
-              max="10"
-              value={formData.minCgpa}
-              onChange={(e) => setFormData({ ...formData, minCgpa: e.target.value })}
-              placeholder="7.5"
-              required
-              error={formErrors.minCgpa}
-            />
+              <FormInput
+                label="Minimum CGPA"
+                name="minCgpa"
+                type="number"
+                step="0.01"
+                min="0"
+                max="10"
+                value={formData.minCgpa}
+                onChange={(e) => setFormData({ ...formData, minCgpa: e.target.value })}
+                placeholder="7.5"
+                required
+                error={formErrors.minCgpa}
+              />
 
-            <FormInput
-              label="Maximum Backlogs"
-              name="maxBacklogs"
-              type="number"
-              min="0"
-              value={formData.maxBacklogs}
-              onChange={(e) => setFormData({ ...formData, maxBacklogs: e.target.value })}
-              placeholder="0"
-              required
-              error={formErrors.maxBacklogs}
-            />
+              <FormInput
+                label="Maximum Backlogs"
+                name="maxBacklogs"
+                type="number"
+                min="0"
+                value={formData.maxBacklogs}
+                onChange={(e) => setFormData({ ...formData, maxBacklogs: e.target.value })}
+                placeholder="0"
+                required
+                error={formErrors.maxBacklogs}
+              />
 
-            <FormInput
-              label="Application Deadline"
-              name="deadline"
-              type="date"
-              value={formData.deadline}
-              onChange={(e) => setFormData({ ...formData, deadline: e.target.value })}
-              required
-              error={formErrors.deadline}
-            />
-          </div>
+              <FormInput
+                label="Application Deadline"
+                name="deadline"
+                type="date"
+                value={formData.deadline}
+                onChange={(e) => setFormData({ ...formData, deadline: e.target.value })}
+                required
+                error={formErrors.deadline}
+              />
+            </div>
 
-          <div style={{ marginTop: '1rem' }}>
-            <FormTextarea
-              label="Job Description"
-              name="jobDescription"
-              value={formData.jobDescription}
-              onChange={(e) => setFormData({ ...formData, jobDescription: e.target.value })}
-              placeholder="Describe requirements, responsibilities, and eligibility..."
-              rows={3}
-            />
-          </div>
-        </form>
-      </Modal>
+            <div style={{ marginTop: '1rem' }}>
+              <FormTextarea
+                label="Job Description"
+                name="jobDescription"
+                value={formData.jobDescription}
+                onChange={(e) => setFormData({ ...formData, jobDescription: e.target.value })}
+                placeholder="Describe requirements, responsibilities, and eligibility..."
+                rows={3}
+              />
+            </div>
+          </form>
+        </Modal>
+      )}
 
+      {/* Confirm Delete Dialog */}
       <ConfirmDialog
         isOpen={!!jobToDelete}
         onClose={() => setJobToDelete(null)}
