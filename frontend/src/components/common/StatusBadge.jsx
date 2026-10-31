@@ -44,10 +44,14 @@ export function StatusBadge({ status, type = 'default' }) {
   else if (normalized === 'ACTIVE') {
     variant = 'success';
     label = 'Active';
+  } else if (normalized === 'DISABLED') {
+    variant = 'danger';
+    label = 'Disabled';
   } else if (normalized === 'EXPIRED') {
     variant = 'danger';
     label = 'Expired';
   }
+
 
   return (
     <span className={`badge badge-${variant}`}>

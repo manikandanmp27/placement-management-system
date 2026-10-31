@@ -25,6 +25,8 @@ import StudentApplicationsPage from './pages/StudentApplicationsPage';
 import StudentInterviewsPage from './pages/StudentInterviewsPage';
 import StudentPlacementPage from './pages/StudentPlacementPage';
 import StudentProfilePage from './pages/StudentProfilePage';
+import OfficerAccountsPage from './pages/OfficerAccountsPage';
+
 
 function ApplicationsRoute() {
   const { isStudent } = useAuth();
@@ -68,7 +70,16 @@ export function App() {
                     </ProtectedRoute>
                   }
                 />
+                <Route
+                  path="officers"
+                  element={
+                    <ProtectedRoute allowedRoles={['ROLE_ADMIN']}>
+                      <OfficerAccountsPage />
+                    </ProtectedRoute>
+                  }
+                />
                 <Route path="companies" element={<CompaniesPage />} />
+
                 <Route path="jobs" element={<JobsPage />} />
 
                 {/* Role-adaptive / dedicated routes */}

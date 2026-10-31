@@ -16,7 +16,9 @@ const PAGE_METADATA = {
   '/my-interviews': { title: 'My Interviews', section: 'Student Portal' },
   '/my-placement': { title: 'My Placement Status', section: 'Student Portal' },
   '/my-profile': { title: 'My Profile', section: 'Student Portal' },
+  '/officers': { title: 'Officer Accounts', section: 'Administration' },
 };
+
 
 function formatRole(role) {
   switch (role) {

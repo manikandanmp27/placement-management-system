@@ -28,6 +28,10 @@ const OFFICER_NAV_ITEMS = [
   { path: '/statistics', label: 'Placement Statistics', icon: BarChart3 },
 ];
 
+const ADMIN_EXTRA_NAV_ITEMS = [
+  { path: '/officers', label: 'Officer Accounts', icon: ShieldCheck },
+];
+
 const STUDENT_NAV_ITEMS = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/my-applications', label: 'My Applications', icon: FileText },
@@ -56,7 +60,13 @@ export function Sidebar({ isCollapsed, onToggleCollapse, isMobileOpen, onCloseMo
   const { user, logout } = useAuth();
 
   const isStudent = user?.role === 'ROLE_STUDENT';
-  const visibleNavItems = isStudent ? STUDENT_NAV_ITEMS : OFFICER_NAV_ITEMS;
+  const isAdmin = user?.role === 'ROLE_ADMIN';
+  const visibleNavItems = isStudent
+    ? STUDENT_NAV_ITEMS
+    : isAdmin
+    ? [...OFFICER_NAV_ITEMS, ...ADMIN_EXTRA_NAV_ITEMS]
+    : OFFICER_NAV_ITEMS;
+
 
   return (
     <>
@@ -101,8 +111,11 @@ export function Sidebar({ isCollapsed, onToggleCollapse, isMobileOpen, onCloseMo
 
         <nav className="sidebar-nav">
           {!isCollapsed && (
-            <div className="nav-section-title">{isStudent ? 'Student Portal' : 'Navigation'}</div>
+            <div className="nav-section-title">
+              {isStudent ? 'Student Portal' : isAdmin ? 'Admin Console' : 'Navigation'}
+            </div>
           )}
+
 
           {visibleNavItems.map((item) => {
             const Icon = item.icon;

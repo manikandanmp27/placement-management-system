@@ -48,4 +48,10 @@ public interface AppUserRepository extends JpaRepository<AppUser, Integer> {
      * Count total accounts possessing the specified system role (e.g., checking if any ROLE_ADMIN exists).
      */
     long countByRole(Role role);
+
+    /**
+     * Find all accounts possessing the specified system role, ordered by creation date descending.
+     */
+    java.util.List<AppUser> findByRoleOrderByCreatedAtDesc(Role role);
 }
+
