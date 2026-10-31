@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 
 const PAGE_METADATA = {
   '/': { title: 'Dashboard', section: 'Overview' },
+  '/departments': { title: 'Department Management', section: 'Academics' },
   '/students': { title: 'Students Directory', section: 'Academics' },
   '/companies': { title: 'Partner Companies', section: 'Corporate Relations' },
   '/jobs': { title: 'Job Openings', section: 'Recruitment' },

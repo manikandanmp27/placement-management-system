@@ -26,6 +26,7 @@ import StudentInterviewsPage from './pages/StudentInterviewsPage';
 import StudentPlacementPage from './pages/StudentPlacementPage';
 import StudentProfilePage from './pages/StudentProfilePage';
 import OfficerAccountsPage from './pages/OfficerAccountsPage';
+import DepartmentsPage from './pages/DepartmentsPage';
 
 
 function ApplicationsRoute() {
@@ -67,6 +68,14 @@ export function App() {
                   element={
                     <ProtectedRoute allowedRoles={['ROLE_PLACEMENT_OFFICER', 'ROLE_ADMIN']}>
                       <StudentsPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="departments"
+                  element={
+                    <ProtectedRoute allowedRoles={['ROLE_PLACEMENT_OFFICER', 'ROLE_ADMIN']}>
+                      <DepartmentsPage />
                     </ProtectedRoute>
                   }
                 />

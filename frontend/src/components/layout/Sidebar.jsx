@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
   GraduationCap,
+  Building,
   Building2,
   Briefcase,
   FileText,
@@ -20,6 +21,7 @@ import { useAuth } from '../../contexts/AuthContext';
 const OFFICER_NAV_ITEMS = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/students', label: 'Students', icon: GraduationCap },
+  { path: '/departments', label: 'Departments', icon: Building },
   { path: '/companies', label: 'Companies', icon: Building2 },
   { path: '/jobs', label: 'Jobs', icon: Briefcase },
   { path: '/applications', label: 'Applications', icon: FileText },
@@ -27,6 +29,7 @@ const OFFICER_NAV_ITEMS = [
   { path: '/placements', label: 'Placements', icon: Award },
   { path: '/statistics', label: 'Placement Statistics', icon: BarChart3 },
 ];
+
 
 const ADMIN_EXTRA_NAV_ITEMS = [
   { path: '/officers', label: 'Officer Accounts', icon: ShieldCheck },

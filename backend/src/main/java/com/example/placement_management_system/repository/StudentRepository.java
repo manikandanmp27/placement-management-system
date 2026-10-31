@@ -17,4 +17,8 @@ public interface StudentRepository extends JpaRepository<Student, Integer> {
     List<Student> findByIsArchivedTrue();
 
     List<Student> findByIsArchived(Boolean isArchived);
-}
+
+    long countByDepartment_DepartmentId(Integer departmentId);
+
+    boolean existsByDepartment_DepartmentId(Integer departmentId);
+}

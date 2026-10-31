@@ -2,6 +2,8 @@ package com.example.placement_management_system.controller;
 
 import com.example.placement_management_system.entity.Department;
 import com.example.placement_management_system.service.DepartmentService;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -31,8 +33,16 @@ public class DepartmentController {
 
     @PostMapping
     @PreAuthorize("hasAnyRole('PLACEMENT_OFFICER', 'ADMIN')")
-    public Department createDepartment(@RequestBody Department department) {
-        return departmentService.saveDepartment(department);
+    public ResponseEntity<Department> createDepartment(@RequestBody Department department) {
+        Department created = departmentService.saveDepartment(department);
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('PLACEMENT_OFFICER', 'ADMIN')")
+    public ResponseEntity<Department> updateDepartment(@PathVariable Integer id, @RequestBody Department department) {
+        Department updated = departmentService.updateDepartment(id, department);
+        return ResponseEntity.ok(updated);
     }
 
     @DeleteMapping("/{id}")
