@@ -12,6 +12,10 @@ const PAGE_METADATA = {
   '/interviews': { title: 'Interview Schedules', section: 'Recruitment' },
   '/placements': { title: 'Placement Records', section: 'Outcomes' },
   '/statistics': { title: 'Placement Statistics', section: 'Analytics' },
+  '/my-applications': { title: 'My Applications', section: 'Student Portal' },
+  '/my-interviews': { title: 'My Interviews', section: 'Student Portal' },
+  '/my-placement': { title: 'My Placement Status', section: 'Student Portal' },
+  '/my-profile': { title: 'My Profile', section: 'Student Portal' },
 };
 
 function formatRole(role) {

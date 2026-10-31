@@ -225,6 +225,52 @@ class StudentDataIsolationIntegrationTest {
     }
 
     @Test
+    @DisplayName("Student A and Student B retrieve their respective profiles via /api/students/me without passing IDs")
+    void studentMeEndpointDerivesPrincipalProfile() throws Exception {
+        // Student A gets Alice
+        mockMvc.perform(get("/api/students/me")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenA))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.studentId").value(101))
+                .andExpect(jsonPath("$.name").value("Alice"))
+                .andExpect(jsonPath("$.email").value("alice@university.edu"))
+                .andExpect(jsonPath("$.cgpa").value(9.0));
+
+        // Student B gets Bob
+        mockMvc.perform(get("/api/students/me")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenB))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.studentId").value(102))
+                .andExpect(jsonPath("$.name").value("Bob"))
+                .andExpect(jsonPath("$.email").value("bob@university.edu"))
+                .andExpect(jsonPath("$.cgpa").value(8.0));
+    }
+
+    @Test
+    @DisplayName("Officer or unauthenticated caller cannot access /api/students/me")
+    void officerAndUnauthenticatedCannotAccessStudentMe() throws Exception {
+        // Officer denied (403 Forbidden)
+        mockMvc.perform(get("/api/students/me")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + officerToken))
+                .andExpect(status().isForbidden());
+
+        // Unauthenticated denied (401 Unauthorized)
+        mockMvc.perform(get("/api/students/me"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("Archived student account is denied from /api/students/me")
+    void archivedStudentCannotAccessStudentMe() throws Exception {
+        studentA.setIsArchived(true);
+        studentRepository.save(studentA);
+
+        mockMvc.perform(get("/api/students/me")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenA))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     @DisplayName("Student A retrieves only their own applications in list and cannot access Student B's application by ID")
     void studentApplicationIsolation() throws Exception {
         mockMvc.perform(get("/api/applications")

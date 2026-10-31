@@ -59,6 +59,22 @@ public class StudentService {
         return studentRepository.findByIsArchived(archived);
     }
 
+    public Student getCurrentStudentProfile() {
+        if (!SecurityUtils.isStudent()) {
+            throw new AccessDeniedException("Access denied: Only students can access student profile via /me");
+        }
+        Integer studentId = SecurityUtils.getCurrentStudentId();
+        if (studentId == null) {
+            throw new AccessDeniedException("Access denied: Not authenticated as a student");
+        }
+        Student student = studentRepository.findById(studentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Student record not found with ID: " + studentId));
+        if (student.getIsArchived() != null && student.getIsArchived()) {
+            throw new AccessDeniedException("Access denied: Your student account is archived. Please contact the placement office.");
+        }
+        return student;
+    }
+
     public Student getStudentById(Integer id) {
         SecurityUtils.validateStudentOwnership(id, "Access denied: Students can only view their own profile");
         return studentRepository.findById(id).orElse(null);

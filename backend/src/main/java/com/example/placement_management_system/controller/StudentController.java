@@ -28,6 +28,12 @@ public class StudentController {
         return studentService.getAllStudents(includeArchived);
     }
 
+    @GetMapping("/me")
+    @PreAuthorize("hasRole('STUDENT')")
+    public Student getCurrentStudentProfile() {
+        return studentService.getCurrentStudentProfile();
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('STUDENT', 'PLACEMENT_OFFICER', 'ADMIN')")
     public Student getStudentById(@PathVariable Integer id) {

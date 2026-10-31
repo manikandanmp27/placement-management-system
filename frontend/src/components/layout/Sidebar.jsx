@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
-const NAV_ITEMS = [
+const OFFICER_NAV_ITEMS = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/students', label: 'Students', icon: GraduationCap },
   { path: '/companies', label: 'Companies', icon: Building2 },
@@ -25,6 +25,17 @@ const NAV_ITEMS = [
   { path: '/applications', label: 'Applications', icon: FileText },
   { path: '/interviews', label: 'Interviews', icon: CalendarCheck },
   { path: '/placements', label: 'Placements', icon: Award },
+  { path: '/statistics', label: 'Placement Statistics', icon: BarChart3 },
+];
+
+const STUDENT_NAV_ITEMS = [
+  { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { path: '/my-applications', label: 'My Applications', icon: FileText },
+  { path: '/my-interviews', label: 'My Interviews', icon: CalendarCheck },
+  { path: '/my-placement', label: 'My Placement', icon: Award },
+  { path: '/my-profile', label: 'My Profile', icon: User },
+  { path: '/jobs', label: 'Browse Jobs', icon: Briefcase },
+  { path: '/companies', label: 'Partner Companies', icon: Building2 },
   { path: '/statistics', label: 'Placement Statistics', icon: BarChart3 },
 ];
 
@@ -44,12 +55,8 @@ function formatRole(role) {
 export function Sidebar({ isCollapsed, onToggleCollapse, isMobileOpen, onCloseMobile }) {
   const { user, logout } = useAuth();
 
-  const visibleNavItems = NAV_ITEMS.filter((item) => {
-    if (item.path === '/students' && user?.role === 'ROLE_STUDENT') {
-      return false;
-    }
-    return true;
-  });
+  const isStudent = user?.role === 'ROLE_STUDENT';
+  const visibleNavItems = isStudent ? STUDENT_NAV_ITEMS : OFFICER_NAV_ITEMS;
 
   return (
     <>
@@ -94,7 +101,7 @@ export function Sidebar({ isCollapsed, onToggleCollapse, isMobileOpen, onCloseMo
 
         <nav className="sidebar-nav">
           {!isCollapsed && (
-            <div className="nav-section-title">Navigation</div>
+            <div className="nav-section-title">{isStudent ? 'Student Portal' : 'Navigation'}</div>
           )}
 
           {visibleNavItems.map((item) => {

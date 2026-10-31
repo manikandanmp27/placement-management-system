@@ -10,8 +10,6 @@ import {
   TrendingUp,
   Plus,
   ArrowRight,
-  ExternalLink,
-  CheckCircle,
 } from 'lucide-react';
 import {
   BarChart,
@@ -41,8 +39,10 @@ import Button from '../components/common/Button';
 import { SkeletonMetricsGrid, SkeletonTable } from '../components/common/LoadingSkeleton';
 import EmptyState from '../components/common/EmptyState';
 import ErrorState from '../components/common/ErrorState';
-import { formatDate, formatSalary } from '../utils/formatters';
+import { formatDate } from '../utils/formatters';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
+import StudentDashboardPage from './StudentDashboardPage';
 
 const STATUS_COLORS = {
   APPLIED: '#3B82F6',
@@ -54,6 +54,16 @@ const STATUS_COLORS = {
 const CHART_PALETTE = ['#3B5BDB', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4'];
 
 export function DashboardPage() {
+  const { isStudent } = useAuth();
+
+  if (isStudent) {
+    return <StudentDashboardPage />;
+  }
+
+  return <OfficerDashboardContent />;
+}
+
+function OfficerDashboardContent() {
   const { isDark } = useTheme();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);

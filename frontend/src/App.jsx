@@ -5,6 +5,8 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { AuthProvider } from './contexts/AuthContext';
 
+import { useAuth } from './contexts/AuthContext';
+
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import AppLayout from './components/layout/AppLayout';
 
@@ -19,6 +21,26 @@ import InterviewsPage from './pages/InterviewsPage';
 import PlacementsPage from './pages/PlacementsPage';
 import StatisticsPage from './pages/StatisticsPage';
 
+import StudentApplicationsPage from './pages/StudentApplicationsPage';
+import StudentInterviewsPage from './pages/StudentInterviewsPage';
+import StudentPlacementPage from './pages/StudentPlacementPage';
+import StudentProfilePage from './pages/StudentProfilePage';
+
+function ApplicationsRoute() {
+  const { isStudent } = useAuth();
+  return isStudent ? <Navigate to="/my-applications" replace /> : <ApplicationsPage />;
+}
+
+function InterviewsRoute() {
+  const { isStudent } = useAuth();
+  return isStudent ? <Navigate to="/my-interviews" replace /> : <InterviewsPage />;
+}
+
+function PlacementsRoute() {
+  const { isStudent } = useAuth();
+  return isStudent ? <Navigate to="/my-placement" replace /> : <PlacementsPage />;
+}
+
 export function App() {
   return (
     <ThemeProvider>
@@ -28,7 +50,6 @@ export function App() {
             <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
-
 
               <Route
                 path="/"
@@ -49,10 +70,47 @@ export function App() {
                 />
                 <Route path="companies" element={<CompaniesPage />} />
                 <Route path="jobs" element={<JobsPage />} />
-                <Route path="applications" element={<ApplicationsPage />} />
-                <Route path="interviews" element={<InterviewsPage />} />
-                <Route path="placements" element={<PlacementsPage />} />
+
+                {/* Role-adaptive / dedicated routes */}
+                <Route path="applications" element={<ApplicationsRoute />} />
+                <Route path="interviews" element={<InterviewsRoute />} />
+                <Route path="placements" element={<PlacementsRoute />} />
                 <Route path="statistics" element={<StatisticsPage />} />
+
+                {/* Student Portal Dedicated Views */}
+                <Route
+                  path="my-applications"
+                  element={
+                    <ProtectedRoute allowedRoles={['ROLE_STUDENT']}>
+                      <StudentApplicationsPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="my-interviews"
+                  element={
+                    <ProtectedRoute allowedRoles={['ROLE_STUDENT']}>
+                      <StudentInterviewsPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="my-placement"
+                  element={
+                    <ProtectedRoute allowedRoles={['ROLE_STUDENT']}>
+                      <StudentPlacementPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="my-profile"
+                  element={
+                    <ProtectedRoute allowedRoles={['ROLE_STUDENT']}>
+                      <StudentProfilePage />
+                    </ProtectedRoute>
+                  }
+                />
+
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Route>
             </Routes>
