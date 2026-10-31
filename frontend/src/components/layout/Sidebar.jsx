@@ -10,6 +10,7 @@ import {
   CalendarCheck,
   Award,
   BarChart3,
+  FileBarChart,
   ChevronLeft,
   ChevronRight,
   ShieldCheck,
@@ -28,6 +29,7 @@ const OFFICER_NAV_ITEMS = [
   { path: '/interviews', label: 'Interviews', icon: CalendarCheck },
   { path: '/placements', label: 'Placements', icon: Award },
   { path: '/statistics', label: 'Placement Statistics', icon: BarChart3 },
+  { path: '/reports', label: 'Reports', icon: FileBarChart },
 ];
 
 

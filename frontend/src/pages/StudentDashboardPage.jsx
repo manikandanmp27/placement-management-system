@@ -121,15 +121,15 @@ export function StudentDashboardPage() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      {/* 1. Student Profile Hero Banner */}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.15rem' }}>
+      {/* 1. Student Profile Hero Banner - Compact & Modern */}
       <div
         style={{
           background: 'linear-gradient(135deg, var(--color-primary-dark, #2b4acb) 0%, var(--color-primary, #3b5bdb) 100%)',
           color: '#ffffff',
           borderRadius: 'var(--radius-lg)',
-          padding: '1.75rem 2rem',
-          boxShadow: 'var(--shadow-md)',
+          padding: '1.2rem 1.5rem',
+          boxShadow: 'var(--shadow-sm)',
           position: 'relative',
           overflow: 'hidden',
         }}
@@ -139,50 +139,50 @@ export function StudentDashboardPage() {
             position: 'absolute',
             top: '-20px',
             right: '-20px',
-            opacity: 0.08,
+            opacity: 0.07,
             pointerEvents: 'none',
           }}
         >
-          <GraduationCap size={200} />
+          <GraduationCap size={160} />
         </div>
 
         <div
           style={{
             display: 'flex',
             justifyContent: 'space-between',
-            alignItems: 'flex-start',
+            alignItems: 'center',
             flexWrap: 'wrap',
-            gap: '1.25rem',
+            gap: '1rem',
             position: 'relative',
             zIndex: 1,
           }}
         >
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
               <span
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '0.35rem',
-                  padding: '0.2rem 0.65rem',
+                  gap: '0.3rem',
+                  padding: '0.15rem 0.55rem',
                   borderRadius: 'var(--radius-full)',
                   backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                  fontSize: '0.75rem',
+                  fontSize: '0.72rem',
                   fontWeight: 600,
-                  letterSpacing: '0.04em',
+                  letterSpacing: '0.03em',
                 }}
               >
-                <Sparkles size={13} />
-                Student Candidate Portal
+                <Sparkles size={12} />
+                Candidate Portal
               </span>
               <span
                 style={{
-                  padding: '0.2rem 0.65rem',
+                  padding: '0.15rem 0.55rem',
                   borderRadius: 'var(--radius-full)',
                   backgroundColor: stats.isPlaced ? 'rgba(16, 185, 129, 0.25)' : 'rgba(245, 158, 11, 0.25)',
                   color: stats.isPlaced ? '#a7f3d0' : '#fde68a',
                   border: `1px solid ${stats.isPlaced ? 'rgba(16, 185, 129, 0.4)' : 'rgba(245, 158, 11, 0.4)'}`,
-                  fontSize: '0.75rem',
+                  fontSize: '0.72rem',
                   fontWeight: 700,
                 }}
               >
@@ -190,10 +190,10 @@ export function StudentDashboardPage() {
               </span>
             </div>
 
-            <h1 style={{ fontSize: '1.85rem', fontWeight: 800, margin: '0 0 0.35rem 0', color: '#ffffff' }}>
+            <h1 style={{ fontSize: '1.45rem', fontWeight: 800, margin: '0 0 0.2rem 0', color: '#ffffff' }}>
               Welcome back, {student?.name || user?.email?.split('@')[0] || 'Student'}!
             </h1>
-            <p style={{ margin: 0, opacity: 0.9, fontSize: '0.95rem' }}>
+            <p style={{ margin: 0, opacity: 0.9, fontSize: '0.85rem' }}>
               Roll #{student?.studentId} • {student?.department?.departmentName || 'Academic Department'} • Class of {student?.graduationYear || '2026'}
             </p>
 
@@ -202,31 +202,30 @@ export function StudentDashboardPage() {
               style={{
                 display: 'flex',
                 flexWrap: 'wrap',
-                gap: '1rem',
-                marginTop: '1.2rem',
-                fontSize: '0.85rem',
+                alignItems: 'center',
+                gap: '0.6rem',
+                marginTop: '0.75rem',
+                fontSize: '0.8rem',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <span style={{ opacity: 0.75 }}>CGPA:</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: 'rgba(255, 255, 255, 0.15)', padding: '0.2rem 0.6rem', borderRadius: 'var(--radius-sm)' }}>
+                <span style={{ opacity: 0.85 }}>CGPA:</span>
                 <strong>{student?.cgpa !== undefined && student?.cgpa !== null ? Number(student.cgpa).toFixed(2) : '—'} / 10.00</strong>
               </div>
-              <div style={{ opacity: 0.4 }}>•</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <span style={{ opacity: 0.75 }}>Active Backlogs:</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: 'rgba(255, 255, 255, 0.15)', padding: '0.2rem 0.6rem', borderRadius: 'var(--radius-sm)' }}>
+                <span style={{ opacity: 0.85 }}>Backlogs:</span>
                 <strong>
                   {student?.backlogs === 0 ? '0 (Clear)' : `${student?.backlogs || 0}`}
                 </strong>
               </div>
-              <div style={{ opacity: 0.4 }}>•</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <span style={{ opacity: 0.75 }}>Institutional Email:</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: 'rgba(255, 255, 255, 0.15)', padding: '0.2rem 0.6rem', borderRadius: 'var(--radius-sm)' }}>
+                <span style={{ opacity: 0.85 }}>Email:</span>
                 <strong>{student?.email || user?.email}</strong>
               </div>
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '0.75rem', alignSelf: 'flex-start' }}>
+          <div style={{ display: 'flex', gap: '0.6rem', alignSelf: 'flex-start' }}>
             <Link to="/my-profile" style={{ textDecoration: 'none' }}>
               <Button
                 variant="secondary"
@@ -236,9 +235,10 @@ export function StudentDashboardPage() {
                   color: 'var(--color-primary-dark, #2b4acb)',
                   border: 'none',
                   fontWeight: 600,
+                  padding: '0.45rem 0.85rem',
                 }}
               >
-                <User size={15} />
+                <User size={14} />
                 My Profile
               </Button>
             </Link>
@@ -251,9 +251,10 @@ export function StudentDashboardPage() {
                   color: '#ffffff',
                   border: '1px solid rgba(255, 255, 255, 0.4)',
                   fontWeight: 600,
+                  padding: '0.45rem 0.85rem',
                 }}
               >
-                <Briefcase size={15} />
+                <Briefcase size={14} />
                 Browse Jobs
               </Button>
             </Link>
@@ -261,9 +262,17 @@ export function StudentDashboardPage() {
         </div>
       </div>
 
-      {/* 2. Key Metrics Grid */}
-      <div className="metrics-grid">
+      {/* 2. Key Metrics Grid - Minimalistic, Compact & Responsive */}
+      <div
+        className="metrics-grid"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: '0.875rem',
+        }}
+      >
         <MetricCard
+          compact
           title="Total Applications"
           value={stats.totalApps}
           icon={FileText}
@@ -271,6 +280,7 @@ export function StudentDashboardPage() {
           trend={`${stats.applied} In Review`}
         />
         <MetricCard
+          compact
           title="Shortlisted Drives"
           value={stats.shortlisted}
           icon={Briefcase}
@@ -278,6 +288,7 @@ export function StudentDashboardPage() {
           trend="Advanced to rounds"
         />
         <MetricCard
+          compact
           title="Upcoming Interviews"
           value={stats.upcomingInterviewsCount}
           icon={CalendarCheck}
@@ -285,6 +296,7 @@ export function StudentDashboardPage() {
           trend={stats.nextInterview ? `Next: ${formatDate(stats.nextInterview.interviewDate)}` : 'No upcoming slots'}
         />
         <MetricCard
+          compact
           title="Placement Outcome"
           value={stats.isPlaced ? 'Placed' : 'In Progress'}
           icon={Award}
@@ -292,34 +304,35 @@ export function StudentDashboardPage() {
           trend={
             stats.activePlacement
               ? `${stats.activePlacement.company?.companyName || 'Corporate Offer'}`
-              : `${stats.totalApps} applications submitted`
+              : `${stats.totalApps} submitted`
           }
         />
       </div>
 
-      {/* 3. Placement Offer Status Callout */}
+      {/* 3. Placement Offer Status Callout - Minimalistic */}
       {stats.isPlaced && stats.activePlacement ? (
         <Card
           style={{
-            border: '2px solid rgba(16, 185, 129, 0.4)',
+            border: '1.5px solid rgba(16, 185, 129, 0.4)',
             backgroundColor: 'rgba(16, 185, 129, 0.05)',
+            boxShadow: 'var(--shadow-xs)',
           }}
         >
-          <CardBody>
+          <CardBody style={{ padding: '0.9rem 1.25rem' }}>
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 flexWrap: 'wrap',
-                gap: '1rem',
+                gap: '0.875rem',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
                 <div
                   style={{
-                    width: '3.25rem',
-                    height: '3.25rem',
+                    width: '2.5rem',
+                    height: '2.5rem',
                     borderRadius: '50%',
                     backgroundColor: 'rgba(16, 185, 129, 0.15)',
                     color: '#10B981',
@@ -329,19 +342,19 @@ export function StudentDashboardPage() {
                     flexShrink: 0,
                   }}
                 >
-                  <Award size={28} />
+                  <Award size={22} />
                 </div>
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
-                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#10B981', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.15rem' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#10B981', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       Official Placement Offer Verified
                     </span>
-                    <CheckCircle size={15} style={{ color: '#10B981' }} />
+                    <CheckCircle size={14} style={{ color: '#10B981' }} />
                   </div>
-                  <h3 style={{ margin: '0 0 0.25rem 0', fontSize: '1.25rem', fontWeight: 800 }}>
+                  <h3 style={{ margin: '0 0 0.2rem 0', fontSize: '1.1rem', fontWeight: 800 }}>
                     Placed at {stats.activePlacement.company?.companyName}
                   </h3>
-                  <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
+                  <div style={{ fontSize: '0.825rem', color: 'var(--color-text-secondary)', display: 'flex', flexWrap: 'wrap', gap: '0.6rem' }}>
                     <span>Role: <strong>{stats.activePlacement.job?.jobTitle || 'Graduate Trainee'}</strong></span>
                     <span>•</span>
                     <span>Package: <strong style={{ color: 'var(--color-text-primary)' }}>{formatSalary(stats.activePlacement.packageAmount)}</strong></span>
@@ -358,29 +371,29 @@ export function StudentDashboardPage() {
               <Link to="/my-placement" style={{ textDecoration: 'none' }}>
                 <Button variant="primary" size="sm">
                   View Full Offer Details
-                  <ArrowRight size={15} />
+                  <ArrowRight size={14} />
                 </Button>
               </Link>
             </div>
           </CardBody>
         </Card>
       ) : (
-        <Card style={{ backgroundColor: 'var(--color-surface)' }}>
-          <CardBody>
+        <Card style={{ backgroundColor: 'var(--color-surface)', boxShadow: 'var(--shadow-xs)' }}>
+          <CardBody style={{ padding: '0.9rem 1.25rem' }}>
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 flexWrap: 'wrap',
-                gap: '1rem',
+                gap: '0.875rem',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
                 <div
                   style={{
-                    width: '3rem',
-                    height: '3rem',
+                    width: '2.5rem',
+                    height: '2.5rem',
                     borderRadius: 'var(--radius-md)',
                     backgroundColor: 'var(--color-primary-subtle)',
                     color: 'var(--color-primary)',
@@ -390,13 +403,13 @@ export function StudentDashboardPage() {
                     flexShrink: 0,
                   }}
                 >
-                  <TrendingUp size={24} />
+                  <TrendingUp size={20} />
                 </div>
                 <div>
-                  <h3 style={{ margin: '0 0 0.2rem 0', fontSize: '1.05rem', fontWeight: 700 }}>
+                  <h3 style={{ margin: '0 0 0.15rem 0', fontSize: '1rem', fontWeight: 700 }}>
                     Campus Recruitment Drive In Progress
                   </h3>
-                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}>
+                  <p style={{ margin: 0, fontSize: '0.825rem', color: 'var(--color-text-secondary)' }}>
                     {applications.length > 0
                       ? `You have ${applications.length} active application(s) under review. Keep track of shortlist announcements and interview calls.`
                       : 'You have not submitted any applications yet. Explore verified corporate recruitment drives and apply now!'}
@@ -407,7 +420,7 @@ export function StudentDashboardPage() {
               <Link to="/jobs" style={{ textDecoration: 'none' }}>
                 <Button variant="primary" size="sm">
                   Browse Active Job Drives
-                  <ArrowRight size={15} />
+                  <ArrowRight size={14} />
                 </Button>
               </Link>
             </div>

@@ -166,6 +166,29 @@
   justify-content: space-between;
 }
 
+/* ==========================================================================
+   METRICS GRID & METRIC CARDS
+   ========================================================================== */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: var(--space-4, 1rem);
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.875rem;
+  }
+}
+
+@media (max-width: 520px) {
+  .metrics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Metric Card */
 .metric-card {
   background-color: var(--color-surface);
@@ -202,6 +225,10 @@
   color: var(--color-primary);
 }
 
+.metric-card-icon-wrap.primary {
+  background-color: var(--color-primary-subtle);
+  color: var(--color-primary);
+}
 .metric-card-icon-wrap.success {
   background-color: var(--color-success-bg);
   color: var(--color-success);
@@ -213,6 +240,10 @@
 .metric-card-icon-wrap.info {
   background-color: var(--color-info-bg);
   color: var(--color-info);
+}
+.metric-card-icon-wrap.neutral {
+  background-color: var(--color-bg-secondary, rgba(148, 163, 184, 0.15));
+  color: var(--color-text-secondary, #94a3b8);
 }
 
 .metric-card-label {
@@ -237,6 +268,62 @@
   display: flex;
   align-items: center;
   gap: var(--space-1);
+}
+
+/* Minimalist / Compact Metric Card Variant */
+.metric-card.minimal,
+.metric-card.compact,
+.metric-card-compact {
+  padding: 0.85rem 1.15rem;
+  gap: 0.3rem;
+  border-radius: var(--radius-md);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.metric-card.minimal .metric-card-top,
+.metric-card.compact .metric-card-top,
+.metric-card-compact .metric-card-top {
+  margin-bottom: 0.1rem;
+}
+
+.metric-card.minimal .metric-card-label,
+.metric-card.compact .metric-card-label,
+.metric-card-compact .metric-card-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-text-muted, var(--color-text-secondary));
+  letter-spacing: 0.04em;
+}
+
+.metric-card.minimal .metric-card-icon-wrap,
+.metric-card.compact .metric-card-icon-wrap,
+.metric-card-compact .metric-card-icon-wrap {
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: var(--radius-sm);
+}
+
+.metric-card.minimal .metric-card-icon-wrap svg,
+.metric-card.compact .metric-card-icon-wrap svg,
+.metric-card-compact .metric-card-icon-wrap svg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.metric-card.minimal .metric-card-value,
+.metric-card.compact .metric-card-value,
+.metric-card-compact .metric-card-value {
+  font-size: 1.45rem;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.metric-card.minimal .metric-card-meta,
+.metric-card.compact .metric-card-meta,
+.metric-card-compact .metric-card-meta {
+  font-size: 0.72rem;
+  margin-top: 0.15rem;
+  color: var(--color-text-secondary);
 }
 
 /* ==========================================================================

@@ -8,14 +8,15 @@ export function MetricCard({
   subtitle,
   trend,
   className = '',
+  compact = false,
 }) {
   return (
-    <div className={`metric-card ${className}`.trim()}>
+    <div className={`metric-card ${compact ? 'minimal' : ''} ${className}`.trim()}>
       <div className="metric-card-top">
         <span className="metric-card-label">{title}</span>
         {Icon && (
           <div className={`metric-card-icon-wrap ${variant}`}>
-            <Icon size={20} />
+            <Icon size={compact ? 16 : 20} />
           </div>
         )}
       </div>

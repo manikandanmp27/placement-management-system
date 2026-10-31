@@ -27,6 +27,7 @@ import StudentPlacementPage from './pages/StudentPlacementPage';
 import StudentProfilePage from './pages/StudentProfilePage';
 import OfficerAccountsPage from './pages/OfficerAccountsPage';
 import DepartmentsPage from './pages/DepartmentsPage';
+import ReportsPage from './pages/ReportsPage';
 
 
 function ApplicationsRoute() {
@@ -96,6 +97,14 @@ export function App() {
                 <Route path="interviews" element={<InterviewsRoute />} />
                 <Route path="placements" element={<PlacementsRoute />} />
                 <Route path="statistics" element={<StatisticsPage />} />
+                <Route
+                  path="reports"
+                  element={
+                    <ProtectedRoute allowedRoles={['ROLE_PLACEMENT_OFFICER', 'ROLE_ADMIN']}>
+                      <ReportsPage />
+                    </ProtectedRoute>
+                  }
+                />
 
                 {/* Student Portal Dedicated Views */}
                 <Route
