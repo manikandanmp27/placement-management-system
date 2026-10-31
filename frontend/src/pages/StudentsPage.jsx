@@ -5,11 +5,15 @@ import {
   Pencil,
   Trash2,
   Eye,
+  Archive,
+  ArchiveRestore,
+  AlertTriangle,
 } from 'lucide-react';
 
 import { studentsApi } from '../api/students';
 import { departmentsApi } from '../api/departments';
 import { useToast } from '../contexts/ToastContext';
+import { useAuth } from '../contexts/AuthContext';
 
 import Button from '../components/common/Button';
 import SearchInput from '../components/common/SearchInput';
@@ -28,6 +32,8 @@ const CURRENT_YEAR = new Date().getFullYear();
 
 export function StudentsPage() {
   const toast = useToast();
+  const { isOfficer, isAdmin } = useAuth();
+  const canManage = isOfficer || isAdmin;
 
   const [students, setStudents] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -37,6 +43,7 @@ export function StudentsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [rosterFilter, setRosterFilter] = useState('active');
 
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 8;
@@ -47,6 +54,11 @@ export function StudentsPage() {
   const [studentToDelete, setStudentToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [studentToArchive, setStudentToArchive] = useState(null);
+  const [archiveActionType, setArchiveActionType] = useState('archive');
+  const [isArchiving, setIsArchiving] = useState(false);
+  const [archiveModalError, setArchiveModalError] = useState(null);
 
   const [formData, setFormData] = useState({
     studentId: '',
@@ -79,8 +91,17 @@ export function StudentsPage() {
     try {
       setLoading(true);
       setError(null);
+      const studentParams = {};
+      if (rosterFilter === 'all') {
+        studentParams.includeArchived = true;
+      } else if (rosterFilter === 'archived') {
+        studentParams.archived = true;
+      } else {
+        studentParams.archived = false;
+      }
+
       const [studentsData, deptsData] = await Promise.all([
-        studentsApi.getAll(),
+        studentsApi.getAll(studentParams),
         departmentsApi.getAll(),
       ]);
       setStudents(Array.isArray(studentsData) ? studentsData : []);
@@ -91,7 +112,7 @@ export function StudentsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [rosterFilter]);
 
   useEffect(() => {
     loadData();
@@ -127,11 +148,41 @@ export function StudentsPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, departmentFilter, statusFilter]);
+  }, [searchQuery, departmentFilter, statusFilter, rosterFilter]);
 
   const handleViewStudent = (student) => {
     setSelectedStudent(student);
     setIsViewModalOpen(true);
+  };
+
+  const handleArchiveClick = (student) => {
+    setStudentToArchive(student);
+    setArchiveActionType(student.isArchived ? 'unarchive' : 'archive');
+    setArchiveModalError(null);
+  };
+
+  const handleConfirmArchive = async () => {
+    if (!studentToArchive) return;
+    try {
+      setIsArchiving(true);
+      setArchiveModalError(null);
+      if (archiveActionType === 'archive') {
+        await studentsApi.archive(studentToArchive.studentId);
+        toast.success(`Student ${studentToArchive.name} was successfully archived.`);
+      } else {
+        await studentsApi.unarchive(studentToArchive.studentId);
+        toast.success(`Student ${studentToArchive.name} was successfully restored to active roster.`);
+      }
+      setStudentToArchive(null);
+      loadData();
+    } catch (err) {
+      console.error('Failed to change student archive status:', err);
+      const errMsg = err.message || 'Failed to update student archive status.';
+      setArchiveModalError(errMsg);
+      toast.error(errMsg);
+    } finally {
+      setIsArchiving(false);
+    }
   };
 
   const handleDeleteClick = (student) => {
@@ -397,6 +448,20 @@ export function StudentsPage() {
               <option value="NOT_PLACED">Not Placed</option>
             </select>
           </div>
+
+          <div style={{ minWidth: 160 }}>
+            <select
+              className="form-select"
+              value={rosterFilter}
+              onChange={(e) => setRosterFilter(e.target.value)}
+              aria-label="Filter by archive status"
+              id="student-roster-filter"
+            >
+              <option value="active">Active Students</option>
+              <option value="archived">Archived Students</option>
+              <option value="all">All Students</option>
+            </select>
+          </div>
         </div>
 
         <div style={{ fontSize: '0.825rem', color: 'var(--color-text-secondary)' }}>
@@ -444,8 +509,27 @@ export function StudentsPage() {
                       #{student.studentId}
                     </td>
                     <td>
-                      <div style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                        {student.name}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                          {student.name}
+                        </span>
+                        {student.isArchived && (
+                          <span
+                            style={{
+                              fontSize: '0.65rem',
+                              fontWeight: 700,
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.04em',
+                              padding: '0.1rem 0.35rem',
+                              borderRadius: 'var(--radius-sm)',
+                              backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                              color: 'var(--color-danger, #ef4444)',
+                              border: '1px solid rgba(239, 68, 68, 0.25)',
+                            }}
+                          >
+                            Archived
+                          </span>
+                        )}
                       </div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
                         {student.email}
@@ -492,29 +576,60 @@ export function StudentsPage() {
                           onClick={() => handleViewStudent(student)}
                           aria-label={`View details of ${student.name}`}
                           title="View Details"
+                          id={`btn-view-student-${student.studentId}`}
                         >
                           <Eye size={15} />
                         </button>
-                        <button
-                          type="button"
-                          className="icon-btn icon-btn-sm"
-                          onClick={() => handleEditClick(student)}
-                          aria-label={`Edit details of ${student.name}`}
-                          title="Edit Student"
-                          id={`btn-edit-student-${student.studentId}`}
-                        >
-                          <Pencil size={15} />
-                        </button>
-                        <button
-                          type="button"
-                          className="icon-btn icon-btn-sm"
-                          onClick={() => handleDeleteClick(student)}
-                          aria-label={`Delete student ${student.name}`}
-                          title="Delete Student"
-                          style={{ color: 'var(--color-danger)' }}
-                        >
-                          <Trash2 size={15} />
-                        </button>
+                        {canManage && (
+                          <>
+                            <button
+                              type="button"
+                              className="icon-btn icon-btn-sm"
+                              onClick={() => handleEditClick(student)}
+                              aria-label={`Edit details of ${student.name}`}
+                              title="Edit Student"
+                              id={`btn-edit-student-${student.studentId}`}
+                            >
+                              <Pencil size={15} />
+                            </button>
+                            {student.isArchived ? (
+                              <button
+                                type="button"
+                                className="icon-btn icon-btn-sm"
+                                onClick={() => handleArchiveClick(student)}
+                                aria-label={`Restore student ${student.name}`}
+                                title="Restore Student"
+                                id={`btn-restore-student-${student.studentId}`}
+                                style={{ color: 'var(--color-primary)' }}
+                              >
+                                <ArchiveRestore size={15} />
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="icon-btn icon-btn-sm"
+                                onClick={() => handleArchiveClick(student)}
+                                aria-label={`Archive student ${student.name}`}
+                                title="Archive Student"
+                                id={`btn-archive-student-${student.studentId}`}
+                                style={{ color: 'var(--color-warning, #f59e0b)' }}
+                              >
+                                <Archive size={15} />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              className="icon-btn icon-btn-sm"
+                              onClick={() => handleDeleteClick(student)}
+                              aria-label={`Delete student ${student.name}`}
+                              title="Delete Student"
+                              style={{ color: 'var(--color-danger)' }}
+                              id={`btn-delete-student-${student.studentId}`}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -567,8 +682,23 @@ export function StudentsPage() {
                 <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
                   Student ID: #{selectedStudent.studentId}
                 </span>
-                <div style={{ marginTop: '0.35rem' }}>
+                <div style={{ marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <StatusBadge status={selectedStudent.placementStatus} />
+                  {selectedStudent.isArchived && (
+                    <span
+                      style={{
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        padding: '0.15rem 0.5rem',
+                        borderRadius: 'var(--radius-sm)',
+                        backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                        color: 'var(--color-danger, #ef4444)',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                      }}
+                    >
+                      Archived Account
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -915,10 +1045,119 @@ export function StudentsPage() {
         onClose={() => setStudentToDelete(null)}
         onConfirm={handleConfirmDelete}
         title="Delete Student"
-        message={`Are you sure you want to delete student "${studentToDelete?.name}" (ID #${studentToDelete?.studentId})? This action cannot be reversed.`}
+        message={`Are you sure you want to delete student "${studentToDelete?.name}" (ID #${studentToDelete?.studentId})? Note: Hard deletion is strictly blocked if the student has associated applications, placements, or user accounts. Use Archive to safely remove them while preserving historical records.`}
         confirmText="Delete Student"
         isLoading={isDeleting}
       />
+
+      {/* Archive / Restore Confirmation Modal */}
+      <Modal
+        isOpen={!!studentToArchive}
+        onClose={() => {
+          if (!isArchiving) {
+            setStudentToArchive(null);
+            setArchiveModalError(null);
+          }
+        }}
+        title={archiveActionType === 'archive' ? 'Archive Student Record' : 'Restore Student Record'}
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setStudentToArchive(null);
+                setArchiveModalError(null);
+              }}
+              disabled={isArchiving}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant={archiveActionType === 'archive' ? 'danger' : 'primary'}
+              onClick={handleConfirmArchive}
+              isLoading={isArchiving}
+              id="confirm-archive-btn"
+            >
+              {archiveActionType === 'archive' ? 'Confirm & Archive' : 'Confirm & Restore'}
+            </Button>
+          </>
+        }
+      >
+        {studentToArchive && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {archiveModalError && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.65rem',
+                  padding: '0.85rem 1rem',
+                  borderRadius: 'var(--radius-md)',
+                  backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                  color: 'var(--color-danger, #ef4444)',
+                  fontSize: '0.875rem',
+                  border: '1px solid rgba(239, 68, 68, 0.25)',
+                }}
+              >
+                <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+                <span>{archiveModalError}</span>
+              </div>
+            )}
+
+            <div
+              style={{
+                padding: '0.9rem',
+                backgroundColor: 'var(--color-surface-hover)',
+                borderRadius: 'var(--radius-md)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.85rem',
+              }}
+            >
+              <div
+                style={{
+                  width: '2.75rem',
+                  height: '2.75rem',
+                  borderRadius: '50%',
+                  backgroundColor: archiveActionType === 'archive' ? 'rgba(245, 158, 11, 0.15)' : 'var(--color-primary-subtle)',
+                  color: archiveActionType === 'archive' ? 'var(--color-warning, #f59e0b)' : 'var(--color-primary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {archiveActionType === 'archive' ? <Archive size={20} /> : <ArchiveRestore size={20} />}
+              </div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '1rem' }}>{studentToArchive.name}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                  ID #{studentToArchive.studentId} • {studentToArchive.email} • {studentToArchive.department?.departmentName || '—'}
+                </div>
+              </div>
+            </div>
+
+            {archiveActionType === 'archive' ? (
+              <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>
+                <p style={{ margin: 0, marginBottom: '0.75rem', fontWeight: 500, color: 'var(--color-text-primary)' }}>
+                  Are you sure you want to archive this student? This safe deactivation preserves all historical data:
+                </p>
+                <ul style={{ margin: 0, paddingLeft: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                  <li><strong>Excluded from Active Lists</strong>: Hidden from default rosters and candidate selection dropdowns.</li>
+                  <li><strong>Login Disabled</strong>: Student portal login account will be disabled safely without deleting history.</li>
+                  <li><strong>Ineligible for Drives</strong>: Student cannot submit new job applications or self-register a new account.</li>
+                  <li><strong>Historical Integrity Preserved</strong>: All past applications, interview outcomes, and placement records remain intact.</li>
+                </ul>
+              </div>
+            ) : (
+              <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>
+                <p style={{ margin: 0, fontWeight: 500, color: 'var(--color-text-primary)' }}>
+                  Restoring will return this student to the active roster, re-enable their portal login, and make them eligible for active placement workflows.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

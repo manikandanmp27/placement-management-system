@@ -63,6 +63,10 @@ public class AuthService {
         Student student = studentRepository.findById(request.getStudentId())
                 .orElseThrow(() -> new IllegalArgumentException("Student record not found"));
 
+        if (Boolean.TRUE.equals(student.getIsArchived())) {
+            throw new IllegalStateException("Archived student records are not eligible to register an account");
+        }
+
         if (!student.getEmail().trim().equalsIgnoreCase(normalizedEmail)) {
             throw new IllegalArgumentException("Email does not match registered student email");
         }

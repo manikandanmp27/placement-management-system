@@ -19,8 +19,13 @@ public class StudentController {
 
     @GetMapping
     @PreAuthorize("hasAnyRole('PLACEMENT_OFFICER', 'ADMIN')")
-    public List<Student> getAllStudents() {
-        return studentService.getAllStudents();
+    public List<Student> getAllStudents(
+            @RequestParam(required = false, defaultValue = "false") boolean includeArchived,
+            @RequestParam(required = false) Boolean archived) {
+        if (archived != null) {
+            return studentService.getStudentsByArchived(archived);
+        }
+        return studentService.getAllStudents(includeArchived);
     }
 
     @GetMapping("/{id}")
@@ -39,6 +44,18 @@ public class StudentController {
     @PreAuthorize("hasAnyRole('PLACEMENT_OFFICER', 'ADMIN')")
     public Student updateStudent(@PathVariable Integer id, @RequestBody Student student) {
         return studentService.updateStudent(id, student);
+    }
+
+    @PutMapping("/{id}/archive")
+    @PreAuthorize("hasAnyRole('PLACEMENT_OFFICER', 'ADMIN')")
+    public Student archiveStudent(@PathVariable Integer id) {
+        return studentService.archiveStudent(id);
+    }
+
+    @PutMapping("/{id}/unarchive")
+    @PreAuthorize("hasAnyRole('PLACEMENT_OFFICER', 'ADMIN')")
+    public Student unarchiveStudent(@PathVariable Integer id) {
+        return studentService.unarchiveStudent(id);
     }
 
     @DeleteMapping("/{id}")

@@ -33,6 +33,9 @@ public class Student {
     @Column(name = "placement_status")
     private String placementStatus;
 
+    @Column(name = "is_archived", nullable = false)
+    private Boolean isArchived = false;
+
     public Integer getStudentId() {
         return studentId;
     }
@@ -103,5 +106,17 @@ public class Student {
 
     public void setPlacementStatus(String placementStatus) {
         this.placementStatus = placementStatus;
+    }
+
+    public Boolean getIsArchived() {
+        return isArchived != null ? isArchived : false;
+    }
+
+    public void setIsArchived(Boolean isArchived) {
+        this.isArchived = isArchived != null ? isArchived : false;
+    }
+
+    public boolean isArchived() {
+        return Boolean.TRUE.equals(this.isArchived);
     }
 }

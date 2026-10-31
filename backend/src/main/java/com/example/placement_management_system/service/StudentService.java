@@ -2,11 +2,16 @@ package com.example.placement_management_system.service;
 
 import com.example.placement_management_system.entity.Department;
 import com.example.placement_management_system.entity.Student;
+import com.example.placement_management_system.exception.ResourceNotFoundException;
+import com.example.placement_management_system.repository.ApplicationRepository;
+import com.example.placement_management_system.repository.AppUserRepository;
 import com.example.placement_management_system.repository.DepartmentRepository;
+import com.example.placement_management_system.repository.PlacementRepository;
 import com.example.placement_management_system.repository.StudentRepository;
 import com.example.placement_management_system.security.SecurityUtils;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
@@ -16,17 +21,42 @@ public class StudentService {
 
     private final StudentRepository studentRepository;
     private final DepartmentRepository departmentRepository;
+    private final ApplicationRepository applicationRepository;
+    private final PlacementRepository placementRepository;
+    private final AppUserRepository appUserRepository;
 
-    public StudentService(StudentRepository studentRepository, DepartmentRepository departmentRepository) {
+    public StudentService(
+            StudentRepository studentRepository,
+            DepartmentRepository departmentRepository,
+            ApplicationRepository applicationRepository,
+            PlacementRepository placementRepository,
+            AppUserRepository appUserRepository) {
         this.studentRepository = studentRepository;
         this.departmentRepository = departmentRepository;
+        this.applicationRepository = applicationRepository;
+        this.placementRepository = placementRepository;
+        this.appUserRepository = appUserRepository;
     }
 
     public List<Student> getAllStudents() {
+        return getAllStudents(false);
+    }
+
+    public List<Student> getAllStudents(boolean includeArchived) {
         if (SecurityUtils.isStudent()) {
             throw new AccessDeniedException("Access denied: Students cannot access the full student directory");
         }
-        return studentRepository.findAll();
+        if (includeArchived) {
+            return studentRepository.findAll();
+        }
+        return studentRepository.findByIsArchivedFalse();
+    }
+
+    public List<Student> getStudentsByArchived(boolean archived) {
+        if (SecurityUtils.isStudent()) {
+            throw new AccessDeniedException("Access denied: Students cannot access the full student directory");
+        }
+        return studentRepository.findByIsArchived(archived);
     }
 
     public Student getStudentById(Integer id) {
@@ -91,6 +121,7 @@ public class StudentService {
         student.setPhone(student.getPhone() != null && !student.getPhone().trim().isEmpty() ? student.getPhone().trim() : null);
         student.setDepartment(dept);
         student.setPlacementStatus(placementStatus);
+        student.setIsArchived(false);
 
         return studentRepository.save(student);
     }
@@ -106,7 +137,7 @@ public class StudentService {
             throw new IllegalArgumentException("Updated student data cannot be empty");
         }
         Student existing = studentRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Student not found with ID: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Student not found with ID: " + id));
 
         if (updatedStudent.getName() == null || updatedStudent.getName().trim().isEmpty()) {
             throw new IllegalArgumentException("Student name is required");
@@ -158,14 +189,84 @@ public class StudentService {
         existing.setGraduationYear(updatedStudent.getGraduationYear());
         existing.setCgpa(updatedStudent.getCgpa());
         existing.setBacklogs(updatedStudent.getBacklogs());
+        existing.setIsArchived(existing.getIsArchived());
 
         return studentRepository.save(existing);
     }
 
+    @Transactional
+    public Student archiveStudent(Integer id) {
+        if (SecurityUtils.isStudent()) {
+            throw new AccessDeniedException("Access denied: Students cannot archive academic records");
+        }
+        if (id == null || id <= 0) {
+            throw new IllegalArgumentException("Valid positive Student ID is required");
+        }
+        Student student = studentRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Student not found with ID: " + id));
+
+        if (Boolean.TRUE.equals(student.getIsArchived())) {
+            throw new IllegalStateException("Student " + student.getName() + " (ID #" + id + ") is already archived");
+        }
+
+        student.setIsArchived(true);
+        Student saved = studentRepository.save(student);
+
+        // Safely disable linked user account without deleting credentials or history
+        appUserRepository.findByStudent_StudentId(id).ifPresent(user -> {
+            user.setEnabled(false);
+            appUserRepository.save(user);
+        });
+
+        return saved;
+    }
+
+    @Transactional
+    public Student unarchiveStudent(Integer id) {
+        if (SecurityUtils.isStudent()) {
+            throw new AccessDeniedException("Access denied: Students cannot unarchive academic records");
+        }
+        if (id == null || id <= 0) {
+            throw new IllegalArgumentException("Valid positive Student ID is required");
+        }
+        Student student = studentRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Student not found with ID: " + id));
+
+        if (!Boolean.TRUE.equals(student.getIsArchived())) {
+            throw new IllegalStateException("Student " + student.getName() + " (ID #" + id + ") is not archived");
+        }
+
+        student.setIsArchived(false);
+        Student saved = studentRepository.save(student);
+
+        // Safely re-enable linked user account
+        appUserRepository.findByStudent_StudentId(id).ifPresent(user -> {
+            user.setEnabled(true);
+            appUserRepository.save(user);
+        });
+
+        return saved;
+    }
+
+    @Transactional
     public void deleteStudent(Integer id) {
         if (SecurityUtils.isStudent()) {
             throw new AccessDeniedException("Access denied: Students cannot delete academic records");
         }
-        studentRepository.deleteById(id);
+        if (id == null || id <= 0) {
+            throw new IllegalArgumentException("Valid positive Student ID is required");
+        }
+        Student student = studentRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Student not found with ID: " + id));
+
+        boolean hasApplications = !applicationRepository.findByStudent_StudentId(id).isEmpty();
+        boolean hasPlacements = !placementRepository.findByStudent_StudentId(id).isEmpty();
+        boolean hasUserAccount = appUserRepository.existsByStudent_StudentId(id);
+
+        if (hasApplications || hasPlacements || hasUserAccount) {
+            throw new IllegalStateException("Cannot delete student with associated applications, placements, or user accounts. Please archive the student instead to preserve historical records.");
+        }
+
+        studentRepository.delete(student);
     }
 }
