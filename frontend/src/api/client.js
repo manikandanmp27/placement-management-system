@@ -1,4 +1,33 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
+const TOKEN_KEY = 'cpms_token';
+
+export function getStoredToken() {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredToken(token) {
+  try {
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token);
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+    }
+  } catch {
+    // ignore storage access errors
+  }
+}
+
+export function removeStoredToken() {
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // ignore storage access errors
+  }
+}
 
 async function request(endpoint, options = {}) {
   const { params, headers = {}, ...restOptions } = options;
@@ -18,8 +47,10 @@ async function request(endpoint, options = {}) {
     }
   }
 
+  const token = getStoredToken();
   const defaultHeaders = {
     'Accept': 'application/json, text/plain, */*',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
     ...headers,
   };
 
@@ -48,6 +79,13 @@ async function request(endpoint, options = {}) {
     }
 
     if (!response.ok) {
+      if (response.status === 401) {
+        removeStoredToken();
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+        }
+      }
+
       const errorMessage =
         (typeof data === 'string' && data) ||
         data?.message ||
@@ -74,7 +112,9 @@ async function request(endpoint, options = {}) {
 export const apiClient = {
   get: (endpoint, params = null) => request(endpoint, { method: 'GET', params }),
   post: (endpoint, body = null, params = null) => request(endpoint, { method: 'POST', body, params }),
+  put: (endpoint, body = null, params = null) => request(endpoint, { method: 'PUT', body, params }),
   delete: (endpoint) => request(endpoint, { method: 'DELETE' }),
 };
 
 export default apiClient;
+

@@ -1,6 +1,7 @@
 import React from 'react';
 import { useLocation, Link } from 'react-router-dom';
-import { Menu, ChevronRight, Bell, Sparkles } from 'lucide-react';
+import { Menu, ChevronRight, Sparkles, LogOut, Shield } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 const PAGE_METADATA = {
   '/': { title: 'Dashboard', section: 'Overview' },
@@ -13,8 +14,22 @@ const PAGE_METADATA = {
   '/statistics': { title: 'Placement Statistics', section: 'Analytics' },
 };
 
+function formatRole(role) {
+  switch (role) {
+    case 'ROLE_ADMIN':
+      return 'Admin';
+    case 'ROLE_PLACEMENT_OFFICER':
+      return 'Officer';
+    case 'ROLE_STUDENT':
+      return 'Student';
+    default:
+      return 'User';
+  }
+}
+
 export function TopHeader({ onOpenMobile }) {
   const location = useLocation();
+  const { user, logout } = useAuth();
   const currentMeta = PAGE_METADATA[location.pathname] || {
     title: 'Portal',
     section: 'Placement Office',
@@ -71,9 +86,44 @@ export function TopHeader({ onOpenMobile }) {
           <Sparkles size={14} />
           <span>Active Season 2026–27</span>
         </div>
+
+        {user && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}
+          >
+            <span
+              className="badge badge-info"
+              style={{
+                textTransform: 'none',
+                fontWeight: 600,
+                fontSize: '0.75rem',
+                padding: '0.3rem 0.6rem',
+              }}
+              title={user.email}
+            >
+              <Shield size={12} />
+              {formatRole(user.role)}
+            </span>
+
+            <button
+              type="button"
+              className="icon-btn icon-btn-sm"
+              onClick={logout}
+              title="Sign Out"
+              aria-label="Sign Out"
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );
 }
 
 export default TopHeader;
+

@@ -12,7 +12,10 @@ import {
   ChevronLeft,
   ChevronRight,
   ShieldCheck,
+  User,
+  LogOut,
 } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 const NAV_ITEMS = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -25,10 +28,31 @@ const NAV_ITEMS = [
   { path: '/statistics', label: 'Placement Statistics', icon: BarChart3 },
 ];
 
+function formatRole(role) {
+  switch (role) {
+    case 'ROLE_ADMIN':
+      return 'Admin';
+    case 'ROLE_PLACEMENT_OFFICER':
+      return 'Placement Officer';
+    case 'ROLE_STUDENT':
+      return 'Student';
+    default:
+      return 'User';
+  }
+}
+
 export function Sidebar({ isCollapsed, onToggleCollapse, isMobileOpen, onCloseMobile }) {
+  const { user, logout } = useAuth();
+
+  const visibleNavItems = NAV_ITEMS.filter((item) => {
+    if (item.path === '/students' && user?.role === 'ROLE_STUDENT') {
+      return false;
+    }
+    return true;
+  });
+
   return (
     <>
-      
       {isMobileOpen && (
         <div
           className="sidebar-overlay"
@@ -43,7 +67,6 @@ export function Sidebar({ isCollapsed, onToggleCollapse, isMobileOpen, onCloseMo
         }`}
         aria-label="Main Navigation"
       >
-        
         <div className="sidebar-header">
           <NavLink to="/" className="sidebar-brand" onClick={onCloseMobile}>
             <div className="brand-icon-box">
@@ -74,7 +97,7 @@ export function Sidebar({ isCollapsed, onToggleCollapse, isMobileOpen, onCloseMo
             <div className="nav-section-title">Navigation</div>
           )}
 
-          {NAV_ITEMS.map((item) => {
+          {visibleNavItems.map((item) => {
             const Icon = item.icon;
             return (
               <NavLink
@@ -95,17 +118,38 @@ export function Sidebar({ isCollapsed, onToggleCollapse, isMobileOpen, onCloseMo
         </nav>
 
         <div className="sidebar-footer">
-          <div className="profile-card" title={isCollapsed ? 'Placement Officer (Admin)' : undefined}>
+          <div
+            className="profile-card"
+            title={isCollapsed ? `${user?.email || 'User'} (${formatRole(user?.role)})` : undefined}
+          >
             <div className="profile-avatar">
-              <ShieldCheck size={18} />
+              {user?.role === 'ROLE_STUDENT' ? <User size={18} /> : <ShieldCheck size={18} />}
             </div>
             {!isCollapsed && (
               <div className="profile-info">
-                <span className="profile-name">Placement Cell</span>
-                <span className="profile-role">Admin Officer</span>
+                <span className="profile-name" title={user?.email || 'User'}>
+                  {user?.email || 'Authenticated User'}
+                </span>
+                <span className="profile-role">{formatRole(user?.role)}</span>
               </div>
             )}
           </div>
+
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={logout}
+            title="Sign Out"
+            style={{
+              width: '100%',
+              justifyContent: isCollapsed ? 'center' : 'flex-start',
+              color: 'var(--color-sidebar-text-muted)',
+              padding: '0.45rem 0.65rem',
+            }}
+          >
+            <LogOut size={16} />
+            {!isCollapsed && <span>Sign Out</span>}
+          </button>
         </div>
       </aside>
     </>
@@ -113,3 +157,4 @@ export function Sidebar({ isCollapsed, onToggleCollapse, isMobileOpen, onCloseMo
 }
 
 export default Sidebar;
+
