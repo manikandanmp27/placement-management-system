@@ -9,11 +9,12 @@ import {
   ShieldCheck,
   Briefcase,
   FileText,
+  Lock,
 } from 'lucide-react';
 
 import { studentsApi } from '../api/students';
 import { useAuth } from '../contexts/AuthContext';
-import StatusBadge from '../components/common/StatusBadge';
+import StatusBadge, { CategoryTag } from '../components/common/StatusBadge';
 import { Card, CardHeader, CardBody } from '../components/common/Card';
 import Button from '../components/common/Button';
 import { SkeletonMetricsGrid } from '../components/common/LoadingSkeleton';
@@ -45,9 +46,9 @@ export function StudentProfilePage() {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-        <div style={{ height: '140px', borderRadius: 'var(--radius-lg)', backgroundColor: 'var(--color-surface)', opacity: 0.6 }} />
-        <SkeletonMetricsGrid count={2} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+        <div style={{ height: '140px', borderRadius: 'var(--radius-xl)', backgroundColor: 'var(--color-surface)', opacity: 0.7 }} />
+        <SkeletonMetricsGrid count={3} />
       </div>
     );
   }
@@ -62,7 +63,6 @@ export function StudentProfilePage() {
     );
   }
 
-  const isPlaced = student?.placementStatus === 'PLACED';
   const nameInitials = student?.name
     ? student.name
         .split(' ')
@@ -73,133 +73,164 @@ export function StudentProfilePage() {
     : 'ST';
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      {/* 1. Header Profile Banner */}
-      <Card>
-        <CardBody style={{ padding: '1.75rem 2rem' }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: '1.5rem',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+      {/* Page Header */}
+      <div className="page-header" style={{ marginBottom: 0 }}>
+        <div className="page-header-title-area">
+          <h1 className="page-header-title">My Academic Profile</h1>
+          <p className="page-header-subtitle">
+            Verified academic credentials and placement office records
+          </p>
+        </div>
+        <div className="page-header-actions">
+          <Link to="/my-applications" style={{ textDecoration: 'none' }}>
+            <Button variant="secondary" size="sm">
+              <FileText size={15} strokeWidth={1.75} />
+              <span>My Applications</span>
+            </Button>
+          </Link>
+          <Link to="/jobs" style={{ textDecoration: 'none' }}>
+            <Button variant="primary" size="sm">
+              <Briefcase size={15} strokeWidth={1.75} />
+              <span>Browse Jobs</span>
+            </Button>
+          </Link>
+        </div>
+      </div>
+
+      {/* 1. Identity Banner (Solid primary-900, No gradient) */}
+      <Card style={{ overflow: 'hidden' }}>
+        <div
+          style={{
+            backgroundColor: 'var(--color-primary-900)',
+            padding: 'var(--space-6)',
+            color: '#FFFFFF',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 'var(--space-5)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-5)', flexWrap: 'wrap' }}>
+            <div
+              style={{
+                width: '72px',
+                height: '72px',
+                borderRadius: 'var(--radius-full)',
+                backgroundColor: 'var(--color-primary-600)',
+                color: '#FFFFFF',
+                fontSize: '1.75rem',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                boxShadow: 'var(--shadow-2)',
+              }}
+              aria-hidden="true"
+            >
+              {nameInitials}
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <h2 style={{ fontSize: 'var(--text-xl)', fontWeight: 700, color: '#FFFFFF', margin: 0 }}>
+                  {student?.name}
+                </h2>
+                <StatusBadge status={student?.placementStatus || 'NOT_PLACED'} />
+              </div>
+
               <div
                 style={{
-                  width: '4.5rem',
-                  height: '4.5rem',
-                  borderRadius: '50%',
-                  background: 'linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark, #2b4acb) 100%)',
-                  color: '#ffffff',
-                  fontSize: '1.6rem',
-                  fontWeight: 800,
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  boxShadow: 'var(--shadow-sm)',
-                  flexShrink: 0,
+                  flexWrap: 'wrap',
+                  gap: 'var(--space-2)',
+                  fontSize: 'var(--text-xs)',
+                  color: 'var(--color-primary-100)',
+                  marginTop: '2px',
                 }}
               >
-                {nameInitials}
+                <span className="record-id" style={{ backgroundColor: 'rgba(255, 255, 255, 0.12)', padding: '2px 8px', borderRadius: 'var(--radius-xs)' }}>
+                  Roll #{student?.studentId}
+                </span>
+                <span>•</span>
+                <span>{student?.department?.departmentName || 'Department'}</span>
+                <span>•</span>
+                <span>Class of {student?.graduationYear}</span>
               </div>
-
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.3rem' }}>
-                  <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800 }}>{student?.name}</h2>
-                  <StatusBadge status={student?.placementStatus || 'NOT_PLACED'} />
-                </div>
-                <div style={{ fontSize: '0.9rem', color: 'var(--color-text-secondary)', display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
-                  <span>Roll #{student?.studentId}</span>
-                  <span>•</span>
-                  <span>{student?.department?.departmentName || 'Department'}</span>
-                  <span>•</span>
-                  <span>Class of {student?.graduationYear}</span>
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <Link to="/my-applications" style={{ textDecoration: 'none' }}>
-                <Button variant="secondary" size="sm">
-                  <FileText size={15} />
-                  My Applications
-                </Button>
-              </Link>
-              <Link to="/jobs" style={{ textDecoration: 'none' }}>
-                <Button variant="primary" size="sm">
-                  <Briefcase size={15} />
-                  Browse Jobs
-                </Button>
-              </Link>
             </div>
           </div>
-        </CardBody>
+        </div>
       </Card>
 
-      {/* 2. Details Two-Column Grid */}
+      {/* 2. Academic & Account Definition Cards */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
-          gap: '1.5rem',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+          gap: 'var(--space-6)',
         }}
       >
-        {/* Academic Records */}
+        {/* Academic Parameters */}
         <Card>
-          <CardHeader>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-              <GraduationCap size={18} style={{ color: 'var(--color-primary)' }} />
-              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>Academic Records</h3>
-            </div>
-          </CardHeader>
+          <CardHeader
+            title="Academic Credentials"
+            subtitle="Verified against institutional exam records"
+          />
           <CardBody>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.65rem' }}>
-                <span style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Student Roll ID</span>
-                <strong style={{ fontSize: '0.95rem' }}>#{student?.studentId}</strong>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--color-border-subtle)', paddingBottom: 'var(--space-3)' }}>
+                <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>Student Roll ID</span>
+                <span className="record-id" style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
+                  #{student?.studentId}
+                </span>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.65rem' }}>
-                <span style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Department</span>
-                <strong style={{ fontSize: '0.95rem' }}>{student?.department?.departmentName || '—'}</strong>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--color-border-subtle)', paddingBottom: 'var(--space-3)' }}>
+                <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>Department</span>
+                <span style={{ fontWeight: 500, fontSize: 'var(--text-sm)' }}>
+                  {student?.department?.departmentName || '—'}
+                </span>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.65rem' }}>
-                <span style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Cumulative GPA (CGPA)</span>
-                <div style={{ textAlign: 'right' }}>
-                  <strong style={{ fontSize: '1.05rem', color: 'var(--color-primary)' }}>
-                    {student?.cgpa !== undefined ? Number(student.cgpa).toFixed(2) : '—'}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--color-border-subtle)', paddingBottom: 'var(--space-3)' }}>
+                <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>Cumulative CGPA</span>
+                <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                  <strong style={{ fontSize: 'var(--text-md)', color: 'var(--color-primary-600)' }}>
+                    {student?.cgpa !== undefined && student?.cgpa !== null ? Number(student.cgpa).toFixed(2) : '—'}
                   </strong>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginLeft: '0.25rem' }}>/ 10.00</span>
+                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginLeft: '4px' }}>/ 10.00</span>
                 </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.65rem' }}>
-                <span style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Active Academic Backlogs</span>
-                <strong>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--color-border-subtle)', paddingBottom: 'var(--space-3)' }}>
+                <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>Active Backlogs</span>
+                <span>
                   {student?.backlogs === 0 ? (
-                    <span style={{ color: 'var(--color-success, #10B981)', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                      <CheckCircle size={14} />
-                      0 (Clear Record)
+                    <span className="badge badge-success">
+                      <span className="badge-dot" aria-hidden="true" />
+                      0 Backlogs (Clear)
                     </span>
                   ) : (
-                    <span style={{ color: 'var(--color-warning, #f59e0b)' }}>
+                    <span className="badge badge-danger">
+                      <span className="badge-dot" aria-hidden="true" />
                       {student?.backlogs} Active Backlog(s)
                     </span>
                   )}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--color-border-subtle)', paddingBottom: 'var(--space-3)' }}>
+                <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>Expected Graduation</span>
+                <strong style={{ fontSize: 'var(--text-sm)', fontVariantNumeric: 'tabular-nums' }}>
+                  {student?.graduationYear}
                 </strong>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.65rem' }}>
-                <span style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Graduation Year</span>
-                <strong style={{ fontSize: '0.95rem' }}>{student?.graduationYear}</strong>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Placement Status</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>Placement Status</span>
                 <StatusBadge status={student?.placementStatus || 'NOT_PLACED'} />
               </div>
             </div>
@@ -208,61 +239,45 @@ export function StudentProfilePage() {
 
         {/* Contact & Account Credentials */}
         <Card>
-          <CardHeader>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-              <ShieldCheck size={18} style={{ color: 'var(--color-primary)' }} />
-              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>Contact & Portal Account</h3>
-            </div>
-          </CardHeader>
+          <CardHeader
+            title="Contact & System Account"
+            subtitle="Registered institutional identity and portal access"
+          />
           <CardBody>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.65rem' }}>
-                <span style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Full Candidate Name</span>
-                <strong style={{ fontSize: '0.95rem' }}>{student?.name}</strong>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.65rem' }}>
-                <span style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Institutional Email</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                  <Mail size={13} style={{ color: 'var(--color-text-muted)' }} />
-                  <strong style={{ fontSize: '0.95rem' }}>{student?.email}</strong>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--color-border-subtle)', paddingBottom: 'var(--space-3)' }}>
+                <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>Institutional Email</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                  <Mail size={14} strokeWidth={1.75} style={{ color: 'var(--color-text-muted)' }} />
+                  <span style={{ fontSize: 'var(--text-sm)', fontWeight: 500 }}>{student?.email}</span>
                 </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.65rem' }}>
-                <span style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Telephone Number</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                  <Phone size={13} style={{ color: 'var(--color-text-muted)' }} />
-                  <strong style={{ fontSize: '0.95rem' }}>{student?.phone || '—'}</strong>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--color-border-subtle)', paddingBottom: 'var(--space-3)' }}>
+                <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>Contact Telephone</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                  <Phone size={14} strokeWidth={1.75} style={{ color: 'var(--color-text-muted)' }} />
+                  <span style={{ fontSize: 'var(--text-sm)', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
+                    {student?.phone || 'Not recorded'}
+                  </span>
                 </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.65rem' }}>
-                <span style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Portal User Account</span>
-                <strong style={{ fontSize: '0.95rem' }}>{user?.email}</strong>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--color-border-subtle)', paddingBottom: 'var(--space-3)' }}>
+                <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>Portal Account</span>
+                <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>{user?.email}</span>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.65rem' }}>
-                <span style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Access Role</span>
-                <span
-                  style={{
-                    fontSize: '0.75rem',
-                    fontWeight: 700,
-                    padding: '0.15rem 0.5rem',
-                    borderRadius: 'var(--radius-sm)',
-                    backgroundColor: 'var(--color-primary-subtle)',
-                    color: 'var(--color-primary)',
-                  }}
-                >
-                  STUDENT CANDIDATE
-                </span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--color-border-subtle)', paddingBottom: 'var(--space-3)' }}>
+                <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>Access Role</span>
+                <CategoryTag>ROLE_STUDENT</CategoryTag>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Account Status</span>
-                <span style={{ color: 'var(--color-success, #10B981)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <CheckCircle size={14} />
-                  Active
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)' }}>Session Verification</span>
+                <span className="badge badge-success">
+                  <span className="badge-dot" aria-hidden="true" />
+                  Active Session
                 </span>
               </div>
             </div>
@@ -270,24 +285,12 @@ export function StudentProfilePage() {
         </Card>
       </div>
 
-      {/* 3. Advisory Callout Banner */}
-      <div
-        style={{
-          padding: '1.1rem 1.25rem',
-          borderRadius: 'var(--radius-md)',
-          backgroundColor: 'var(--color-surface)',
-          border: '1px solid var(--color-border)',
-          display: 'flex',
-          alignItems: 'flex-start',
-          gap: '0.85rem',
-        }}
-      >
-        <AlertCircle size={20} style={{ color: 'var(--color-info, #3B82F6)', flexShrink: 0, marginTop: '0.15rem' }} />
-        <div style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)', lineHeight: 1.55 }}>
-          <strong style={{ color: 'var(--color-text-primary)' }}>Important Academic Verification Notice:</strong>
-          <br />
-          Academic records (CGPA, active backlogs, department affiliation) are synchronized with the university examination database and governed by the Placement Office.
-          Students are not permitted to alter academic parameters directly. If you notice any discrepancy in your CGPA or backlog records, please submit an official verification request to your Department Placement Coordinator.
+      {/* 3. Read-Only Policy Alert */}
+      <div className="alert alert-info banner" role="status">
+        <Lock size={18} strokeWidth={1.75} style={{ flexShrink: 0, marginTop: '2px' }} />
+        <div>
+          <strong>Official Records Governance: </strong>
+          Academic credentials (CGPA, active backlogs, graduation class, and department) are synced directly with the university database and locked from direct edits. To request a correction, submit a transcript verification request to the placement cell.
         </div>
       </div>
     </div>

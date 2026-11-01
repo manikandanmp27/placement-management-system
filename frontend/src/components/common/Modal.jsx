@@ -1,15 +1,18 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 
 export function Modal({
   isOpen,
   onClose,
   title,
+  subtitle,
   children,
   footer,
   size = 'md',
   closeOnBackdrop = true,
 }) {
+  const dialogRef = useRef(null);
+
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape' && isOpen) {
@@ -30,7 +33,12 @@ export function Modal({
 
   if (!isOpen) return null;
 
-  const sizeClass = size === 'lg' ? 'modal-dialog-lg' : '';
+  const sizeClass =
+    size === 'sm'
+      ? 'modal-dialog-sm'
+      : size === 'lg'
+      ? 'modal-dialog-lg'
+      : '';
 
   return (
     <div
@@ -41,20 +49,29 @@ export function Modal({
       aria-labelledby="modal-title"
     >
       <div
+        ref={dialogRef}
         className={`modal-dialog ${sizeClass}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-header">
-          <h3 id="modal-title" className="modal-title">
-            {title}
-          </h3>
+          <div>
+            <h3 id="modal-title" className="modal-title">
+              {title}
+            </h3>
+            {subtitle && (
+              <p style={{ margin: '2px 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                {subtitle}
+              </p>
+            )}
+          </div>
           <button
             type="button"
             className="icon-btn icon-btn-sm"
             onClick={onClose}
             aria-label="Close dialog"
+            title="Close"
           >
-            <X size={18} />
+            <X size={18} strokeWidth={1.75} />
           </button>
         </div>
 

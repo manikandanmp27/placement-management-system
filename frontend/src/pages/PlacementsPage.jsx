@@ -4,12 +4,8 @@ import {
   Plus,
   Trash2,
   Eye,
-  Building2,
-  Calendar,
-  GraduationCap,
-  Briefcase,
-  DollarSign,
   Sparkles,
+  RefreshCw,
 } from 'lucide-react';
 
 import { placementsApi } from '../api/placements';
@@ -17,10 +13,11 @@ import { studentsApi } from '../api/students';
 import { companiesApi } from '../api/companies';
 import { jobsApi } from '../api/jobs';
 import { useToast } from '../contexts/ToastContext';
+import { useAuth } from '../contexts/AuthContext';
 
 import Button from '../components/common/Button';
 import SearchInput from '../components/common/SearchInput';
-import StatusBadge from '../components/common/StatusBadge';
+import Pagination from '../components/common/Pagination';
 import Modal from '../components/common/Modal';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import EmptyState from '../components/common/EmptyState';
@@ -33,6 +30,7 @@ import { formatDate, formatSalary } from '../utils/formatters';
 
 export function PlacementsPage() {
   const toast = useToast();
+  const { isStudent } = useAuth();
 
   const [placements, setPlacements] = useState([]);
   const [students, setStudents] = useState([]);
@@ -41,9 +39,15 @@ export function PlacementsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
 
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 8;
+
+  // Modals & Action States
   const [selectedPlacement, setSelectedPlacement] = useState(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -89,6 +93,7 @@ export function PlacementsPage() {
     loadData();
   }, []);
 
+  // Filtered Placements
   const filteredPlacements = useMemo(() => {
     return placements.filter((p) => {
       const q = searchQuery.toLowerCase().trim();
@@ -101,7 +106,8 @@ export function PlacementsPage() {
         studentName.includes(q) ||
         companyName.includes(q) ||
         jobTitle.includes(q) ||
-        String(p.placementId).includes(q);
+        String(p.placementId).includes(q) ||
+        String(p.student?.studentId).includes(q);
 
       const matchesCompany =
         !companyFilter ||
@@ -110,6 +116,17 @@ export function PlacementsPage() {
       return matchesSearch && matchesCompany;
     });
   }, [placements, searchQuery, companyFilter]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, companyFilter]);
+
+  const totalPages = Math.ceil(filteredPlacements.length / pageSize) || 1;
+  const paginatedPlacements = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredPlacements.slice(start, start + pageSize);
+  }, [filteredPlacements, currentPage, pageSize]);
 
   const handleView = (placement) => {
     setSelectedPlacement(placement);
@@ -123,7 +140,7 @@ export function PlacementsPage() {
       await placementsApi.delete(placementToDelete.placementId);
       toast.success(`Placement record #${placementToDelete.placementId} removed.`);
       setPlacementToDelete(null);
-      loadData();
+      await loadData();
     } catch (err) {
       console.error('Failed to delete placement:', err);
       toast.error(err.message || 'Failed to delete placement record.');
@@ -157,7 +174,7 @@ export function PlacementsPage() {
   };
 
   const handleCreate = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     if (!validateForm()) return;
 
     try {
@@ -199,7 +216,7 @@ export function PlacementsPage() {
         packageAmount: '',
         joiningDate: '',
       });
-      loadData();
+      await loadData();
     } catch (err) {
       console.error('Failed to create placement:', err);
       toast.error(err.message || 'Failed to record placement. Ensure IDs exist and constraints are satisfied.');
@@ -209,187 +226,294 @@ export function PlacementsPage() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '1rem',
-        }}
-      >
-        <div>
-          <h2 style={{ fontSize: '1.45rem', fontWeight: 700, margin: 0 }}>
-            Placement Outcomes
-          </h2>
-          <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
-            Verified student corporate recruitment offers, compensation packages, and joining dates.
+    <div className="page-container">
+      {/* Page Header */}
+      <div className="page-header">
+        <div className="page-header-content">
+          <h1 className="page-title">Placements</h1>
+          <p className="page-subtitle">
+            Official placement record register, verified recruitment offers, and compensation packages.
           </p>
         </div>
 
-        <Button
-          variant="primary"
-          icon={Plus}
-          onClick={() => {
-            setFormErrors({});
-            setIsCreateModalOpen(true);
-          }}
-          id="btn-record-placement"
-        >
-          Record Placement
-        </Button>
-      </div>
+        <div className="page-header-actions">
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={loadData}
+            disabled={loading}
+            title="Refresh records"
+          >
+            <RefreshCw size={16} className={loading ? 'spin' : ''} />
+            <span>Refresh</span>
+          </button>
 
-      <div
-        className="card"
-        style={{
-          padding: '1rem',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '0.85rem',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap', flex: 1 }}>
-          <SearchInput
-            value={searchQuery}
-            onChange={setSearchQuery}
-            placeholder="Search candidate, company, role..."
-            id="placement-search-input"
-          />
-
-          <div style={{ minWidth: 200 }}>
-            <select
-              className="form-select"
-              value={companyFilter}
-              onChange={(e) => setCompanyFilter(e.target.value)}
-              aria-label="Filter by hiring partner"
+          {!isStudent && (
+            <Button
+              variant="primary"
+              icon={Plus}
+              onClick={() => {
+                setFormErrors({});
+                setIsCreateModalOpen(true);
+              }}
+              id="btn-record-placement"
             >
-              <option value="">All Companies</option>
-              {companies.map((c) => (
-                <option key={c.companyId} value={c.companyId}>
-                  {c.companyName}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div style={{ fontSize: '0.825rem', color: 'var(--color-text-secondary)' }}>
-          Total Placements: <strong>{filteredPlacements.length}</strong>
+              Record Placement
+            </Button>
+          )}
         </div>
       </div>
 
-      {loading ? (
-        <SkeletonTable rows={5} cols={7} />
-      ) : error ? (
-        <ErrorState message={error} onRetry={loadData} />
-      ) : filteredPlacements.length === 0 ? (
-        <EmptyState
-          icon={Award}
-          title="No Placement Records Found"
-          description={
-            searchQuery || companyFilter
-              ? 'No placement outcomes match the active filters.'
-              : 'There are currently no confirmed student placements recorded.'
-          }
-          actionText="Record Placement"
-          actionIcon={Plus}
-          onAction={() => setIsCreateModalOpen(true)}
-        />
-      ) : (
-        <div className="card" style={{ overflow: 'hidden' }}>
-          <div className="table-container" style={{ border: 'none', borderRadius: 0 }}>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Student Candidate</th>
-                  <th>Company Partner</th>
-                  <th>Job Title</th>
-                  <th>Package (CTC)</th>
-                  <th>Offer Date</th>
-                  <th>Joining Date</th>
-                  <th style={{ textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredPlacements.map((p) => (
-                  <tr key={p.placementId}>
-                    <td style={{ fontWeight: 600, color: 'var(--color-text-muted)' }}>
-                      #{p.placementId}
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                        {p.student?.name || `Student #${p.student?.studentId}`}
-                      </div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                        ID: #{p.student?.studentId}
-                      </div>
-                    </td>
-                    <td>
-                      <span style={{ fontWeight: 500 }}>
-                        {p.company?.companyName}
-                      </span>
-                    </td>
-                    <td>
-                      <span style={{ fontSize: '0.875rem' }}>
-                        {p.job?.jobTitle}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: 700, color: 'var(--color-success)', fontSize: '0.95rem' }}>
-                        {formatSalary(p.packageAmount)}
-                      </div>
-                    </td>
-                    <td style={{ whiteSpace: 'nowrap', fontSize: '0.825rem' }}>
-                      {formatDate(p.placementDate)}
-                    </td>
-                    <td style={{ whiteSpace: 'nowrap', fontSize: '0.825rem' }}>
-                      {p.joiningDate ? (
-                        formatDate(p.joiningDate)
-                      ) : (
-                        <span style={{ color: 'var(--color-text-muted)' }}>TBD</span>
-                      )}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
-                        <button
-                          type="button"
-                          className="icon-btn icon-btn-sm"
-                          onClick={() => handleView(p)}
-                          aria-label={`View details of placement #${p.placementId}`}
-                          title="View Details"
-                        >
-                          <Eye size={15} />
-                        </button>
-                        <button
-                          type="button"
-                          className="icon-btn icon-btn-sm"
-                          onClick={() => setPlacementToDelete(p)}
-                          aria-label={`Delete placement #${p.placementId}`}
-                          title="Delete Record"
-                          style={{ color: 'var(--color-danger)' }}
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+      {/* Main Content Card */}
+      <div className="card">
+        {/* FilterBar */}
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 'var(--space-3)',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: 'var(--space-4)',
+            borderBottom: '1px solid var(--color-border)',
+          }}
+        >
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', flex: 1, minWidth: '260px' }}>
+            <div style={{ flex: 1, minWidth: '220px', maxWidth: '400px' }}>
+              <SearchInput
+                value={searchQuery}
+                onChange={setSearchQuery}
+                placeholder="Search candidate, company, role..."
+                id="placement-search-input"
+              />
+            </div>
+
+            <div style={{ minWidth: '180px' }}>
+              <select
+                className="form-select"
+                value={companyFilter}
+                onChange={(e) => setCompanyFilter(e.target.value)}
+                aria-label="Filter by recruiting company"
+                id="placement-company-filter"
+              >
+                <option value="">All Companies</option>
+                {companies.map((c) => (
+                  <option key={c.companyId} value={c.companyId}>
+                    {c.companyName}
+                  </option>
                 ))}
-              </tbody>
-            </table>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+            Showing <strong style={{ color: 'var(--color-text-primary)' }}>{filteredPlacements.length}</strong> of{' '}
+            <strong style={{ color: 'var(--color-text-primary)' }}>{placements.length}</strong> placements
           </div>
         </div>
-      )}
 
+        {/* State Views */}
+        {loading ? (
+          <SkeletonTable rows={6} cols={6} />
+        ) : error ? (
+          <ErrorState
+            title="Unable to load placements"
+            message={error}
+            onRetry={loadData}
+          />
+        ) : filteredPlacements.length === 0 ? (
+          <EmptyState
+            icon={Award}
+            title={searchQuery || companyFilter ? 'No matching placements' : 'No placement records'}
+            description={
+              searchQuery || companyFilter
+                ? 'No placement outcomes match the active filters.'
+                : 'There are currently no confirmed student placements recorded.'
+            }
+            actionText={!isStudent && !(searchQuery || companyFilter) ? 'Record Placement' : undefined}
+            actionIcon={Plus}
+            onAction={!isStudent && !(searchQuery || companyFilter) ? () => setIsCreateModalOpen(true) : undefined}
+          />
+        ) : (
+          <>
+            {/* Desktop Table View (>=768px, 6 columns) */}
+            <div className="table-responsive">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th style={{ minWidth: '200px' }}>Student</th>
+                    <th style={{ minWidth: '200px' }}>Company & Role</th>
+                    <th className="col-numeric" style={{ width: '140px', textAlign: 'right' }}>Package</th>
+                    <th className="col-date" style={{ width: '130px' }}>Offer Date</th>
+                    <th className="col-date" style={{ width: '130px' }}>Joining Date</th>
+                    <th className="col-actions" style={{ textAlign: 'right', width: isStudent ? '80px' : '120px' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedPlacements.map((p) => (
+                    <tr key={p.placementId}>
+                      {/* 1. Student */}
+                      <td style={{ minWidth: '200px' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                          {p.student?.name || `Student #${p.student?.studentId}`}
+                        </div>
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>
+                          ID: #{p.student?.studentId}
+                        </div>
+                      </td>
+
+                      {/* 2. Company & Role */}
+                      <td style={{ minWidth: '200px' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                          {p.company?.companyName}
+                        </div>
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                          {p.job?.jobTitle}
+                        </div>
+                      </td>
+
+                      {/* 3. Package (accentuated numeric) */}
+                      <td className="col-numeric" style={{ width: '140px', textAlign: 'right' }}>
+                        <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--color-primary-600)', fontSize: 'var(--text-sm)' }}>
+                          {formatSalary(p.packageAmount)}
+                        </span>
+                      </td>
+
+                      {/* 4. Offer Date */}
+                      <td className="col-date" style={{ width: '130px', fontSize: 'var(--text-xs)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                        {formatDate(p.placementDate)}
+                      </td>
+
+                      {/* 5. Joining Date */}
+                      <td className="col-date" style={{ width: '130px', fontSize: 'var(--text-xs)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                        {p.joiningDate ? (
+                          formatDate(p.joiningDate)
+                        ) : (
+                          <span style={{ color: 'var(--color-text-muted)' }}>TBD</span>
+                        )}
+                      </td>
+
+                      {/* 6. Actions */}
+                      <td className="col-actions" style={{ width: isStudent ? '80px' : '120px', textAlign: 'right' }}>
+                        <div style={{ display: 'inline-flex', gap: 'var(--space-1)', justifyContent: 'flex-end' }}>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => handleView(p)}
+                            aria-label={`View details of placement #${p.placementId}`}
+                            title="View Placement Details"
+                            id={`btn-view-placement-${p.placementId}`}
+                          >
+                            <Eye size={15} />
+                          </button>
+
+                          {!isStudent && (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm text-danger"
+                              onClick={() => setPlacementToDelete(p)}
+                              aria-label={`Delete placement #${p.placementId}`}
+                              title="Delete Record"
+                              id={`btn-delete-placement-${p.placementId}`}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Data Cards (<768px) */}
+            <div className="data-card-list" style={{ padding: 'var(--space-4)' }}>
+              {paginatedPlacements.map((p) => (
+                <div key={p.placementId} className="data-card">
+                  <div className="data-card-header">
+                    <div>
+                      <div className="data-card-title">{p.student?.name || `Student #${p.student?.studentId}`}</div>
+                      <div className="data-card-subtitle">
+                        {p.company?.companyName} • {p.job?.jobTitle}
+                      </div>
+                    </div>
+                    <div className="data-card-badge">
+                      <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+                        {formatSalary(p.packageAmount)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="data-card-grid">
+                    <div className="data-card-field">
+                      <div className="data-card-field-label">Student ID</div>
+                      <div className="data-card-field-value">#{p.student?.studentId}</div>
+                    </div>
+
+                    <div className="data-card-field">
+                      <div className="data-card-field-label">Offer Date</div>
+                      <div className="data-card-field-value">{formatDate(p.placementDate)}</div>
+                    </div>
+
+                    <div className="data-card-field">
+                      <div className="data-card-field-label">Joining Date</div>
+                      <div className="data-card-field-value">{p.joiningDate ? formatDate(p.joiningDate) : 'TBD'}</div>
+                    </div>
+
+                    <div className="data-card-field">
+                      <div className="data-card-field-label">Placement ID</div>
+                      <div className="data-card-field-value">#{p.placementId}</div>
+                    </div>
+                  </div>
+
+                  <div className="data-card-footer">
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                      Record #{p.placementId}
+                    </span>
+
+                    <div style={{ display: 'inline-flex', gap: 'var(--space-1)' }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => handleView(p)}
+                      >
+                        <Eye size={14} />
+                        <span>View</span>
+                      </button>
+
+                      {!isStudent && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm text-danger"
+                          onClick={() => setPlacementToDelete(p)}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Pagination */}
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={filteredPlacements.length}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+            />
+          </>
+        )}
+      </div>
+
+      {/* View Placement Modal (Offer Letter Style) */}
       <Modal
         isOpen={isViewModalOpen}
         onClose={() => setIsViewModalOpen(false)}
-        title={`Placement Record #${selectedPlacement?.placementId}`}
+        title="Placement Record Details"
         footer={
           <Button variant="secondary" onClick={() => setIsViewModalOpen(false)}>
             Close
@@ -397,83 +521,98 @@ export function PlacementsPage() {
         }
       >
         {selectedPlacement && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+            {/* Offer Summary Banner */}
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '1rem',
-                backgroundColor: 'var(--color-success-bg)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-success-border)',
+                padding: 'var(--space-4)',
+                backgroundColor: 'var(--color-surface-hover)',
+                borderRadius: 'var(--radius-lg)',
+                border: '1px solid var(--color-border)',
               }}
             >
               <div>
-                <span style={{ fontSize: '0.75rem', color: 'var(--color-success-text)', textTransform: 'uppercase', fontWeight: 600 }}>
+                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.04em' }}>
                   Confirmed Package
                 </span>
-                <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--color-success-text)' }}>
+                <div style={{ fontSize: 'var(--text-2xl)', fontWeight: 700, color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums', marginTop: '2px' }}>
                   {formatSalary(selectedPlacement.packageAmount)}
                 </div>
               </div>
-              <Sparkles size={28} style={{ color: 'var(--color-success)' }} />
+              <Sparkles size={28} style={{ color: 'var(--color-primary-600)' }} />
             </div>
 
+            {/* Definition Grid */}
             <div
               style={{
-                backgroundColor: 'var(--color-surface-hover)',
-                padding: '1rem',
+                backgroundColor: 'var(--color-surface)',
+                border: '1px solid var(--color-border)',
+                padding: 'var(--space-4)',
                 borderRadius: 'var(--radius-md)',
                 display: 'grid',
                 gridTemplateColumns: 'repeat(2, 1fr)',
-                gap: '1rem',
+                gap: 'var(--space-4)',
               }}
             >
               <div>
-                <div style={{ fontSize: '0.725rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
-                  Student
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
+                  Placed Student
                 </div>
-                <div style={{ fontWeight: 600, fontSize: '1rem', marginTop: '2px' }}>
+                <div style={{ fontWeight: 600, fontSize: 'var(--text-base)', marginTop: '2px' }}>
                   {selectedPlacement.student?.name}
                 </div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                  ID: #{selectedPlacement.student?.studentId}
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>
+                  Student ID: #{selectedPlacement.student?.studentId}
                 </div>
               </div>
 
               <div>
-                <div style={{ fontSize: '0.725rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
                   Hiring Partner
                 </div>
-                <div style={{ fontWeight: 600, fontSize: '1rem', marginTop: '2px' }}>
+                <div style={{ fontWeight: 600, fontSize: 'var(--text-base)', marginTop: '2px' }}>
                   {selectedPlacement.company?.companyName}
+                </div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                  Company ID: #{selectedPlacement.company?.companyId}
                 </div>
               </div>
 
               <div>
-                <div style={{ fontSize: '0.725rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
                   Job Role
                 </div>
-                <div style={{ fontWeight: 600, fontSize: '0.95rem', marginTop: '2px' }}>
+                <div style={{ fontWeight: 500, fontSize: 'var(--text-sm)', marginTop: '2px' }}>
                   {selectedPlacement.job?.jobTitle}
                 </div>
               </div>
 
               <div>
-                <div style={{ fontSize: '0.725rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
+                  Placement ID
+                </div>
+                <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', marginTop: '2px', fontFamily: 'var(--font-mono)' }}>
+                  #{selectedPlacement.placementId}
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
                   Offer Date
                 </div>
-                <div style={{ fontWeight: 600, fontSize: '0.95rem', marginTop: '2px' }}>
+                <div style={{ fontWeight: 500, fontSize: 'var(--text-sm)', marginTop: '2px' }}>
                   {formatDate(selectedPlacement.placementDate)}
                 </div>
               </div>
 
               <div>
-                <div style={{ fontSize: '0.725rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
-                  Tentative Joining Date
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
+                  Joining Date
                 </div>
-                <div style={{ fontWeight: 600, fontSize: '0.95rem', marginTop: '2px' }}>
+                <div style={{ fontWeight: 500, fontSize: 'var(--text-sm)', marginTop: '2px' }}>
                   {selectedPlacement.joiningDate ? formatDate(selectedPlacement.joiningDate) : 'Pending onboarding schedule'}
                 </div>
               </div>
@@ -482,6 +621,7 @@ export function PlacementsPage() {
         )}
       </Modal>
 
+      {/* Create Placement Modal */}
       <Modal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
@@ -507,7 +647,7 @@ export function PlacementsPage() {
         }
       >
         <form onSubmit={handleCreate}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
             <FormInput
               label="Placement Record ID"
               name="placementId"
@@ -517,7 +657,7 @@ export function PlacementsPage() {
               placeholder="e.g. 503"
               required
               error={formErrors.placementId}
-              helpText="Unique numeric placement ID"
+              helpText="Unique positive numeric placement ID"
             />
 
             <FormSelect
@@ -527,7 +667,7 @@ export function PlacementsPage() {
               onChange={(e) => setFormData({ ...formData, studentId: e.target.value })}
               options={students.map((s) => ({
                 value: s.studentId,
-                label: `${s.name} (ID: ${s.studentId}, Current: ${s.placementStatus})`,
+                label: `${s.name} (ID: ${s.studentId}, Status: ${s.placementStatus})`,
               }))}
               required
               error={formErrors.studentId}
@@ -567,7 +707,7 @@ export function PlacementsPage() {
               error={formErrors.jobId}
             />
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-3)' }}>
               <FormInput
                 label="Offer Date"
                 name="placementDate"
@@ -601,26 +741,27 @@ export function PlacementsPage() {
 
             <div
               style={{
-                backgroundColor: 'var(--color-primary-subtle)',
+                backgroundColor: 'var(--color-surface-hover)',
                 borderRadius: 'var(--radius-md)',
-                padding: '0.75rem',
-                fontSize: '0.75rem',
-                color: 'var(--color-primary)',
+                padding: 'var(--space-3)',
+                fontSize: 'var(--text-xs)',
+                color: 'var(--color-text-secondary)',
+                border: '1px solid var(--color-border)',
               }}
             >
-              Note: Inserting this placement automatically triggers database trigger <code>update_student_placement_status</code>, changing the student's status to <strong>PLACED</strong>.
+              Note: Saving this placement activates the database trigger <code>update_student_placement_status</code>, updating the student's status to <strong>PLACED</strong>.
             </div>
           </div>
         </form>
       </Modal>
 
-      {/* Delete Confirmation */}
+      {/* Delete Confirmation Dialog */}
       <ConfirmDialog
         isOpen={!!placementToDelete}
         onClose={() => setPlacementToDelete(null)}
         onConfirm={handleDelete}
         title="Delete Placement Record"
-        message={`Are you sure you want to delete placement #${placementToDelete?.placementId} for "${placementToDelete?.student?.name}"?`}
+        message={`Are you sure you want to delete placement record #${placementToDelete?.placementId} for "${placementToDelete?.student?.name}"? Note: this action permanently removes the placement record.`}
         confirmText="Delete Record"
         isLoading={isDeleting}
       />

@@ -1,32 +1,35 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import {
-  Building2,
   Plus,
   Trash2,
   Eye,
   ExternalLink,
   MapPin,
-  Briefcase,
-  Globe,
+  RefreshCw,
+  AlertTriangle,
 } from 'lucide-react';
 
 import { companiesApi } from '../api/companies';
 import { jobsApi } from '../api/jobs';
+import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 
-import Button from '../components/common/Button';
-import SearchInput from '../components/common/SearchInput';
-import Modal from '../components/common/Modal';
-import ConfirmDialog from '../components/common/ConfirmDialog';
-import EmptyState from '../components/common/EmptyState';
-import ErrorState from '../components/common/ErrorState';
+import { Card } from '../components/common/Card';
+import { SearchInput } from '../components/common/SearchInput';
+import { Modal } from '../components/common/Modal';
+import { ConfirmDialog } from '../components/common/ConfirmDialog';
+import { EmptyState } from '../components/common/EmptyState';
+import { ErrorState } from '../components/common/ErrorState';
 import { SkeletonTable } from '../components/common/LoadingSkeleton';
-
-import FormInput from '../components/forms/FormInput';
+import { CategoryTag } from '../components/common/StatusBadge';
+import { FormInput } from '../components/forms/FormInput';
 import { formatSalary } from '../utils/formatters';
 
 export function CompaniesPage() {
-  const toast = useToast();
+  const { role } = useAuth();
+  const isStudent = role === 'ROLE_STUDENT';
+  const { toast } = useToast();
 
   const [companies, setCompanies] = useState([]);
   const [jobs, setJobs] = useState([]);
@@ -52,7 +55,7 @@ export function CompaniesPage() {
   });
   const [formErrors, setFormErrors] = useState({});
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -68,19 +71,32 @@ export function CompaniesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   const distinctIndustries = useMemo(() => {
     const set = new Set();
     companies.forEach((c) => {
       if (c.industry) set.add(c.industry.trim());
     });
-    return Array.from(set);
+    return Array.from(set).sort();
   }, [companies]);
+
+  // Count active drives per company
+  const companyJobsMap = useMemo(() => {
+    const map = {};
+    jobs.forEach((j) => {
+      const cId = j.company?.companyId;
+      if (cId) {
+        if (!map[cId]) map[cId] = [];
+        map[cId].push(j);
+      }
+    });
+    return map;
+  }, [jobs]);
 
   const filteredCompanies = useMemo(() => {
     return companies.filter((c) => {
@@ -97,12 +113,10 @@ export function CompaniesPage() {
     });
   }, [companies, searchQuery, industryFilter]);
 
-  const companyJobs = useMemo(() => {
+  const selectedCompanyJobs = useMemo(() => {
     if (!selectedCompany) return [];
-    return jobs.filter(
-      (j) => j.company?.companyId === selectedCompany.companyId
-    );
-  }, [jobs, selectedCompany]);
+    return companyJobsMap[selectedCompany.companyId] || [];
+  }, [selectedCompany, companyJobsMap]);
 
   const handleView = (company) => {
     setSelectedCompany(company);
@@ -114,9 +128,9 @@ export function CompaniesPage() {
     try {
       setIsDeleting(true);
       await companiesApi.delete(companyToDelete.companyId);
-      toast.success(`Company ${companyToDelete.companyName} deleted successfully.`);
+      toast.success(`Company "${companyToDelete.companyName}" deleted successfully.`);
       setCompanyToDelete(null);
-      loadData();
+      await loadData();
     } catch (err) {
       console.error('Failed to delete company:', err);
       toast.error(err.message || 'Cannot delete company with associated jobs or placements.');
@@ -128,10 +142,10 @@ export function CompaniesPage() {
   const validateForm = () => {
     const errors = {};
     if (!formData.companyId || isNaN(formData.companyId) || Number(formData.companyId) <= 0) {
-      errors.companyId = 'Valid positive company ID is required';
+      errors.companyId = 'A positive integer is required for company ID.';
     }
     if (!formData.companyName.trim()) {
-      errors.companyName = 'Company name is required';
+      errors.companyName = 'Company name is required.';
     }
     if (formData.website && !formData.website.startsWith('http')) {
       errors.website = 'Website must start with http:// or https://';
@@ -155,7 +169,7 @@ export function CompaniesPage() {
       };
 
       await companiesApi.create(payload);
-      toast.success(`Company "${payload.companyName}" added successfully!`);
+      toast.success(`Company "${payload.companyName}" registered successfully.`);
       setIsCreateModalOpen(false);
       setFormData({
         companyId: '',
@@ -164,7 +178,7 @@ export function CompaniesPage() {
         location: '',
         website: '',
       });
-      loadData();
+      await loadData();
     } catch (err) {
       console.error('Failed to register company:', err);
       toast.error(err.message || 'Failed to create company. Ensure company ID and name are unique.');
@@ -173,56 +187,59 @@ export function CompaniesPage() {
     }
   };
 
+  const activeJobsForCompanyToDelete = companyToDelete
+    ? (companyJobsMap[companyToDelete.companyId] || []).length
+    : 0;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '1rem',
-        }}
-      >
-        <div>
-          <h2 style={{ fontSize: '1.45rem', fontWeight: 700, margin: 0 }}>
-            Corporate Partners
-          </h2>
-          <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
-            Registered hiring organizations, industry categories, and recruitment locations.
+    <div className="page-container">
+      {/* Page Header */}
+      <div className="page-header">
+        <div className="page-header-content">
+          <h1 className="page-title">Companies</h1>
+          <p className="page-subtitle">
+            Hiring organizations, industry sectors, and active recruitment drives.
           </p>
         </div>
 
-        <Button
-          variant="primary"
-          icon={Plus}
-          onClick={() => {
-            setFormErrors({});
-            setIsCreateModalOpen(true);
-          }}
-          id="btn-register-company"
-        >
-          Add Company
-        </Button>
+        <div className="page-header-actions">
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={loadData}
+            disabled={loading}
+            title="Refresh corporate partners"
+          >
+            <RefreshCw size={16} className={loading ? 'spin' : ''} />
+            <span>Refresh</span>
+          </button>
+
+          {!isStudent && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                setFormErrors({});
+                setIsCreateModalOpen(true);
+              }}
+              id="btn-register-company"
+            >
+              <Plus size={16} />
+              <span>Add Company</span>
+            </button>
+          )}
+        </div>
       </div>
 
-      <div
-        className="card"
-        style={{
-          padding: '1rem',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '0.85rem',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap', flex: 1 }}>
+      {/* Main Content Card */}
+      <Card>
+        {/* FilterBar */}
+        <div className="filter-bar" style={{ marginBottom: 'var(--space-4)' }}>
           <SearchInput
             value={searchQuery}
             onChange={setSearchQuery}
-            placeholder="Search company, location, industry..."
+            placeholder="Search by company, location, industry..."
+            className="filter-search"
             id="company-search-input"
           />
 
@@ -243,239 +260,321 @@ export function CompaniesPage() {
               </select>
             </div>
           )}
+
+          {(searchQuery || industryFilter) && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => {
+                setSearchQuery('');
+                setIndustryFilter('');
+              }}
+            >
+              Clear filters
+            </button>
+          )}
+
+          <div style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+            Showing <strong style={{ color: 'var(--color-text-primary)' }}>{filteredCompanies.length}</strong> of{' '}
+            <strong style={{ color: 'var(--color-text-primary)' }}>{companies.length}</strong> companies
+          </div>
         </div>
 
-        <div style={{ fontSize: '0.825rem', color: 'var(--color-text-secondary)' }}>
-          Total Companies: <strong>{filteredCompanies.length}</strong>
-        </div>
-      </div>
-
-      {loading ? (
-        <SkeletonTable rows={5} cols={6} />
-      ) : error ? (
-        <ErrorState message={error} onRetry={loadData} />
-      ) : filteredCompanies.length === 0 ? (
-        <EmptyState
-          icon={Building2}
-          title="No Companies Found"
-          description={
-            searchQuery || industryFilter
-              ? 'No company matched your search. Try resetting your query.'
-              : 'There are currently no corporate partners recorded in the database.'
-          }
-          actionText="Add Company"
-          actionIcon={Plus}
-          onAction={() => setIsCreateModalOpen(true)}
-        />
-      ) : (
-        <div className="card" style={{ overflow: 'hidden' }}>
-          <div className="table-container" style={{ border: 'none', borderRadius: 0 }}>
-            <table className="table">
+        {/* State Management */}
+        {loading ? (
+          <SkeletonTable rows={5} cols={6} />
+        ) : error ? (
+          <ErrorState
+            title="Couldn't load companies"
+            message={error}
+            onRetry={loadData}
+          />
+        ) : filteredCompanies.length === 0 ? (
+          <EmptyState
+            title={searchQuery || industryFilter ? 'No matching companies' : 'No companies listed yet'}
+            message={
+              searchQuery || industryFilter
+                ? 'No companies match your active filters. Try clearing your search.'
+                : isStudent
+                ? 'No recruitment partners have been registered by the placement cell yet.'
+                : 'There are currently no corporate partners recorded. Register the first company above.'
+            }
+            action={
+              searchQuery || industryFilter ? (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setIndustryFilter('');
+                  }}
+                >
+                  Clear filters
+                </button>
+              ) : !isStudent ? (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => setIsCreateModalOpen(true)}
+                >
+                  <Plus size={15} />
+                  <span>Add Company</span>
+                </button>
+              ) : null
+            }
+          />
+        ) : (
+          <div className="table-responsive">
+            <table className="data-table">
               <thead>
                 <tr>
-                  <th>ID</th>
-                  <th>Company</th>
-                  <th>Industry</th>
-                  <th>Location</th>
-                  <th>Website</th>
-                  <th style={{ textAlign: 'right' }}>Actions</th>
+                  <th style={{ width: '80px' }}>ID</th>
+                  <th style={{ minWidth: '220px' }}>Company</th>
+                  <th style={{ width: '140px' }}>Industry</th>
+                  <th style={{ width: '150px' }}>Location</th>
+                  <th style={{ width: '110px' }}>Website</th>
+                  <th className="col-numeric" style={{ width: '130px', textAlign: 'right' }}>Open Drives</th>
+                  <th className="col-actions" style={{ width: isStudent ? '100px' : '170px', textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredCompanies.map((comp) => (
-                  <tr key={comp.companyId}>
-                    <td style={{ fontWeight: 600, color: 'var(--color-text-muted)' }}>
-                      #{comp.companyId}
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                        <div
-                          style={{
-                            width: '2.25rem',
-                            height: '2.25rem',
-                            borderRadius: 'var(--radius-md)',
-                            backgroundColor: 'var(--color-primary-subtle)',
-                            color: 'var(--color-primary)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontWeight: 700,
-                            fontSize: '0.85rem',
-                            flexShrink: 0,
-                          }}
-                        >
-                          {comp.companyName.charAt(0)}
+                {filteredCompanies.map((comp) => {
+                  const jobCount = (companyJobsMap[comp.companyId] || []).length;
+                  return (
+                    <tr key={comp.companyId}>
+                      <td style={{ width: '80px', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                        #{comp.companyId}
+                      </td>
+                      <td style={{ minWidth: '220px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                          <div
+                            style={{
+                              width: '32px',
+                              height: '32px',
+                              borderRadius: 'var(--radius-md)',
+                              backgroundColor: 'var(--color-primary-50)',
+                              color: 'var(--color-primary-600)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontWeight: 600,
+                              fontSize: 'var(--text-xs)',
+                              flexShrink: 0,
+                            }}
+                          >
+                            {comp.companyName.charAt(0)}
+                          </div>
+                          <span style={{ fontWeight: 600, color: 'var(--color-text-primary)', wordBreak: 'break-word' }}>
+                            {comp.companyName}
+                          </span>
                         </div>
-                        <span style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                          {comp.companyName}
+                      </td>
+                      <td style={{ width: '140px' }}>
+                        <CategoryTag label={comp.industry || 'General'} />
+                      </td>
+                      <td style={{ width: '150px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <MapPin size={14} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{comp.location || '—'}</span>
+                        </div>
+                      </td>
+                      <td style={{ width: '110px' }}>
+                        {comp.website ? (
+                          <a
+                            href={comp.website}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn-link"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)', fontSize: 'var(--text-xs)' }}
+                            aria-label={`Visit ${comp.companyName} website (opens in new tab)`}
+                          >
+                            <span>Visit</span>
+                            <ExternalLink size={12} />
+                          </a>
+                        ) : (
+                          <span style={{ color: 'var(--color-text-muted)' }}>—</span>
+                        )}
+                      </td>
+                      <td className="col-numeric" style={{ width: '130px', textAlign: 'right' }}>
+                        <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: jobCount > 0 ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>
+                          {jobCount}
                         </span>
-                      </div>
-                    </td>
-                    <td>
-                      <span className="badge badge-neutral">
-                        {comp.industry || 'General'}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--color-text-secondary)' }}>
-                        <MapPin size={14} style={{ color: 'var(--color-text-muted)' }} />
-                        <span>{comp.location || '—'}</span>
-                      </div>
-                    </td>
-                    <td>
-                      {comp.website ? (
-                        <a
-                          href={comp.website}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8rem' }}
-                        >
-                          <span>Visit</span>
-                          <ExternalLink size={13} />
-                        </a>
-                      ) : (
-                        <span style={{ color: 'var(--color-text-muted)' }}>—</span>
-                      )}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
-                        <button
-                          type="button"
-                          className="icon-btn icon-btn-sm"
-                          onClick={() => handleView(comp)}
-                          aria-label={`View details of ${comp.companyName}`}
-                          title="View Details"
-                        >
-                          <Eye size={15} />
-                        </button>
-                        <button
-                          type="button"
-                          className="icon-btn icon-btn-sm"
-                          onClick={() => setCompanyToDelete(comp)}
-                          aria-label={`Delete ${comp.companyName}`}
-                          title="Delete Company"
-                          style={{ color: 'var(--color-danger)' }}
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginLeft: 'var(--space-1)' }}>
+                          {jobCount === 1 ? 'drive' : 'drives'}
+                        </span>
+                      </td>
+                      <td className="col-actions" style={{ width: isStudent ? '100px' : '170px', textAlign: 'right' }}>
+                        <div style={{ display: 'inline-flex', gap: 'var(--space-1)', justifyContent: 'flex-end' }}>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => handleView(comp)}
+                            aria-label={`View details of ${comp.companyName}`}
+                            title="View details"
+                          >
+                            <Eye size={15} />
+                            <span>View</span>
+                          </button>
+                          {!isStudent && (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm text-danger"
+                              onClick={() => setCompanyToDelete(comp)}
+                              aria-label={`Delete ${comp.companyName}`}
+                              title={jobCount > 0 ? 'Active drives associated' : 'Delete company'}
+                            >
+                              <Trash2 size={15} />
+                              <span>Delete</span>
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
-        </div>
-      )}
+        )}
+      </Card>
 
-      <Modal
-        isOpen={isViewModalOpen}
-        onClose={() => setIsViewModalOpen(false)}
-        title="Company Profile"
-        size="lg"
-        footer={
-          <Button variant="secondary" onClick={() => setIsViewModalOpen(false)}>
-            Close
-          </Button>
-        }
-      >
-        {selectedCompany && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+      {/* View Details Modal (lg) */}
+      {isViewModalOpen && selectedCompany && (
+        <Modal
+          isOpen={isViewModalOpen}
+          onClose={() => setIsViewModalOpen(false)}
+          title="Company Profile"
+          size="lg"
+          footer={
+            <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setIsViewModalOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+          }
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+            {/* Header info */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
               <div
                 style={{
-                  width: '3.5rem',
-                  height: '3.5rem',
+                  width: '48px',
+                  height: '48px',
                   borderRadius: 'var(--radius-lg)',
-                  backgroundColor: 'var(--color-primary-subtle)',
-                  color: 'var(--color-primary)',
+                  backgroundColor: 'var(--color-primary-50)',
+                  color: 'var(--color-primary-600)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontWeight: 700,
-                  fontSize: '1.35rem',
+                  fontSize: 'var(--text-lg)',
+                  flexShrink: 0,
                 }}
               >
                 {selectedCompany.companyName.charAt(0)}
               </div>
               <div>
-                <h3 style={{ margin: 0, fontSize: '1.2rem' }}>{selectedCompany.companyName}</h3>
-                <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                <h3 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 600 }}>
+                  {selectedCompany.companyName}
+                </h3>
+                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>
                   Partner ID: #{selectedCompany.companyId}
                 </span>
                 {selectedCompany.website && (
-                  <div style={{ marginTop: '0.25rem' }}>
+                  <div style={{ marginTop: 'var(--space-1)' }}>
                     <a
                       href={selectedCompany.website}
                       target="_blank"
                       rel="noopener noreferrer"
-                      style={{ fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}
+                      className="btn-link"
+                      style={{ fontSize: 'var(--text-xs)', display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)' }}
                     >
-                      {selectedCompany.website} <ExternalLink size={12} />
+                      <span>{selectedCompany.website}</span>
+                      <ExternalLink size={12} />
                     </a>
                   </div>
                 )}
               </div>
             </div>
 
+            {/* Definition Grid */}
             <div
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(2, 1fr)',
-                gap: '1rem',
+                gap: 'var(--space-4)',
                 backgroundColor: 'var(--color-surface-hover)',
-                padding: '1rem',
+                padding: 'var(--space-4)',
                 borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-border)',
               }}
             >
               <div>
-                <div style={{ fontSize: '0.725rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>
                   Industry
                 </div>
-                <div style={{ fontSize: '0.9rem', fontWeight: 600, marginTop: '2px' }}>
-                  {selectedCompany.industry || 'Not specified'}
+                <div style={{ marginTop: 'var(--space-1)' }}>
+                  <CategoryTag label={selectedCompany.industry || 'Not specified'} />
                 </div>
               </div>
 
               <div>
-                <div style={{ fontSize: '0.725rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
-                  Corporate Headquarters / Location
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>
+                  Headquarters / Location
                 </div>
-                <div style={{ fontSize: '0.9rem', fontWeight: 600, marginTop: '2px' }}>
+                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500, marginTop: 'var(--space-1)', color: 'var(--color-text-primary)' }}>
                   {selectedCompany.location || 'Not specified'}
                 </div>
               </div>
             </div>
 
+            {/* Open Job Drives */}
             <div>
-              <h4 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '0.75rem' }}>
-                Active Job Openings ({companyJobs.length})
-              </h4>
-              {companyJobs.length === 0 ? (
-                <p style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)', fontStyle: 'italic' }}>
-                  No job postings currently active for this partner.
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-3)' }}>
+                <h4 style={{ fontSize: 'var(--text-sm)', fontWeight: 600, margin: 0 }}>
+                  Open Job Drives ({selectedCompanyJobs.length})
+                </h4>
+                {selectedCompanyJobs.length > 0 && (
+                  <Link to="/jobs" className="btn-link" style={{ fontSize: 'var(--text-xs)' }}>
+                    View in Jobs module &rarr;
+                  </Link>
+                )}
+              </div>
+
+              {selectedCompanyJobs.length === 0 ? (
+                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', margin: 0, fontStyle: 'italic' }}>
+                  No recruitment drives currently posted for this partner.
                 </p>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  {companyJobs.map((j) => (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                  {selectedCompanyJobs.map((j) => (
                     <div
                       key={j.jobId}
                       style={{
-                        padding: '0.75rem',
+                        padding: 'var(--space-3)',
                         borderRadius: 'var(--radius-md)',
                         border: '1px solid var(--color-border)',
+                        backgroundColor: 'var(--color-surface)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
                       }}
                     >
                       <div>
-                        <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{j.jobTitle}</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                          Type: {j.jobType || 'Full Time'} • Min CGPA: {j.minCgpa}
+                        <div style={{ fontWeight: 500, fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>
+                          {j.jobTitle}
+                        </div>
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: 'var(--space-1)', display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                          <CategoryTag label={j.jobType || 'Full Time'} />
+                          <span>Min CGPA: <strong>{j.minCgpa}</strong></span>
+                          <span>Max Backlogs: <strong>{j.maxBacklogs ?? 0}</strong></span>
                         </div>
                       </div>
-                      <div style={{ fontWeight: 700, color: 'var(--color-success)', fontSize: '0.9rem' }}>
+                      <div style={{ fontWeight: 600, color: 'var(--color-text-primary)', fontSize: 'var(--text-sm)', fontVariantNumeric: 'tabular-nums' }}>
                         {formatSalary(j.packageAmount)}
                       </div>
                     </div>
@@ -484,97 +583,135 @@ export function CompaniesPage() {
               )}
             </div>
           </div>
-        )}
-      </Modal>
+        </Modal>
+      )}
 
-      <Modal
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        title="Add Corporate Partner"
-        footer={
-          <>
-            <Button
-              variant="secondary"
-              onClick={() => setIsCreateModalOpen(false)}
-              disabled={isSubmitting}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              onClick={handleCreate}
-              isLoading={isSubmitting}
-              id="submit-register-company-btn"
-            >
-              Save Company
-            </Button>
-          </>
-        }
-      >
-        <form onSubmit={handleCreate}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <FormInput
-              label="Company ID"
-              name="companyId"
-              type="number"
-              value={formData.companyId}
-              onChange={(e) => setFormData({ ...formData, companyId: e.target.value })}
-              placeholder="e.g. 6"
-              required
-              error={formErrors.companyId}
-              helpText="Unique numeric company ID"
-            />
+      {/* Create Modal */}
+      {isCreateModalOpen && !isStudent && (
+        <Modal
+          isOpen={isCreateModalOpen}
+          onClose={() => !isSubmitting && setIsCreateModalOpen(false)}
+          title="Add Corporate Partner"
+          size="md"
+          footer={
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)', width: '100%' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setIsCreateModalOpen(false)}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleCreate}
+                disabled={isSubmitting}
+                id="submit-register-company-btn"
+              >
+                {isSubmitting ? (
+                  <>
+                    <RefreshCw size={15} className="spin" />
+                    <span>Saving…</span>
+                  </>
+                ) : (
+                  <span>Save Company</span>
+                )}
+              </button>
+            </div>
+          }
+        >
+          <form onSubmit={handleCreate}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+              <FormInput
+                label="Company ID"
+                name="companyId"
+                type="number"
+                value={formData.companyId}
+                onChange={(e) => setFormData({ ...formData, companyId: e.target.value })}
+                placeholder="e.g. 10"
+                required
+                error={formErrors.companyId}
+                helperText="Unique numeric company ID identifier"
+                min={1}
+              />
 
-            <FormInput
-              label="Company Name"
-              name="companyName"
-              value={formData.companyName}
-              onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
-              placeholder="e.g. Microsoft"
-              required
-              error={formErrors.companyName}
-            />
+              <FormInput
+                label="Company Name"
+                name="companyName"
+                value={formData.companyName}
+                onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
+                placeholder="e.g. Microsoft Corporation"
+                required
+                error={formErrors.companyName}
+              />
 
-            <FormInput
-              label="Industry"
-              name="industry"
-              value={formData.industry}
-              onChange={(e) => setFormData({ ...formData, industry: e.target.value })}
-              placeholder="e.g. Information Technology"
-            />
+              <FormInput
+                label="Industry"
+                name="industry"
+                value={formData.industry}
+                onChange={(e) => setFormData({ ...formData, industry: e.target.value })}
+                placeholder="e.g. Information Technology, FinTech, Automotive"
+                helperText="Primary industry sector"
+              />
 
-            <FormInput
-              label="Location"
-              name="location"
-              value={formData.location}
-              onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-              placeholder="e.g. Bengaluru, India"
-            />
+              <FormInput
+                label="Location"
+                name="location"
+                value={formData.location}
+                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                placeholder="e.g. Bengaluru, India"
+              />
 
-            <FormInput
-              label="Website URL"
-              name="website"
-              type="url"
-              value={formData.website}
-              onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-              placeholder="https://www.example.com"
-              error={formErrors.website}
-            />
-          </div>
-        </form>
-      </Modal>
+              <FormInput
+                label="Website URL"
+                name="website"
+                type="url"
+                value={formData.website}
+                onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                placeholder="https://www.example.com"
+                error={formErrors.website}
+                helperText="Include http:// or https://"
+              />
+            </div>
+          </form>
+        </Modal>
+      )}
 
-      <ConfirmDialog
-        isOpen={!!companyToDelete}
-        onClose={() => setCompanyToDelete(null)}
-        onConfirm={handleDelete}
-        title="Delete Company Partner"
-        message={`Are you sure you want to delete "${companyToDelete?.companyName}" (ID #${companyToDelete?.companyId})? Any referenced records may prevent this operation.`}
-        confirmText="Delete Partner"
-        isLoading={isDeleting}
-      />
+      {/* Delete Confirmation Dialog */}
+      {companyToDelete && !isStudent && (
+        <ConfirmDialog
+          isOpen={!!companyToDelete}
+          onClose={() => !isDeleting && setCompanyToDelete(null)}
+          onConfirm={handleDelete}
+          title="Delete this corporate partner?"
+          type="danger"
+          confirmLabel="Delete Company"
+          confirmLoading={isDeleting}
+          message={
+            <div>
+              {activeJobsForCompanyToDelete > 0 && (
+                <div className="alert alert-warning" style={{ marginBottom: 'var(--space-3)' }}>
+                  <AlertTriangle size={18} />
+                  <div>
+                    <strong>Partner has {activeJobsForCompanyToDelete} recruitment drive(s).</strong>
+                    <p style={{ margin: 'var(--space-1) 0 0', fontSize: 'var(--text-xs)' }}>
+                      Deleting this company will fail if active job applications or placement records reference it.
+                    </p>
+                  </div>
+                </div>
+              )}
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)', margin: 0 }}>
+                Are you sure you want to delete corporate partner <strong>"{companyToDelete.companyName}"</strong> (ID #{companyToDelete.companyId})?
+              </p>
+            </div>
+          }
+        />
+      )}
     </div>
   );
 }
 
 export default CompaniesPage;
+

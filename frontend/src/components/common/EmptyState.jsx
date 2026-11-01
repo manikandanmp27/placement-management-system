@@ -5,7 +5,7 @@ import Button from './Button';
 export function EmptyState({
   icon: Icon = Inbox,
   title = 'No records found',
-  description = 'There are no items matching your criteria or currently available in the database.',
+  description = 'There are no items matching your criteria or currently recorded in the system.',
   actionText,
   actionIcon,
   onAction,
@@ -13,8 +13,8 @@ export function EmptyState({
 }) {
   return (
     <div className={`empty-state ${className}`.trim()}>
-      <div className="empty-state-icon">
-        <Icon size={28} />
+      <div className="empty-state-icon" aria-hidden="true">
+        <Icon size={36} strokeWidth={1.75} />
       </div>
       <h4 className="empty-state-title">{title}</h4>
       <p className="empty-state-desc">{description}</p>

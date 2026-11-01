@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
-  Briefcase,
   Plus,
   Trash2,
   Eye,
@@ -9,7 +8,9 @@ import {
   AlertCircle,
   CheckCircle2,
   GraduationCap,
-  User,
+  Info,
+  X,
+  RefreshCw,
 } from 'lucide-react';
 
 import { jobsApi } from '../api/jobs';
@@ -20,22 +21,21 @@ import { proceduresApi } from '../api/procedures';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 
-import Button from '../components/common/Button';
-import SearchInput from '../components/common/SearchInput';
-import StatusBadge from '../components/common/StatusBadge';
-import Modal from '../components/common/Modal';
-import ConfirmDialog from '../components/common/ConfirmDialog';
-import EmptyState from '../components/common/EmptyState';
-import ErrorState from '../components/common/ErrorState';
+import { Card } from '../components/common/Card';
+import { SearchInput } from '../components/common/SearchInput';
+import { StatusBadge, CategoryTag } from '../components/common/StatusBadge';
+import { Modal } from '../components/common/Modal';
+import { ConfirmDialog } from '../components/common/ConfirmDialog';
+import { EmptyState } from '../components/common/EmptyState';
+import { ErrorState } from '../components/common/ErrorState';
 import { SkeletonTable } from '../components/common/LoadingSkeleton';
 
-import FormInput from '../components/forms/FormInput';
-import FormSelect from '../components/forms/FormSelect';
-import FormTextarea from '../components/forms/FormTextarea';
+import { FormInput } from '../components/forms/FormInput';
+import { FormSelect } from '../components/forms/FormSelect';
 import { formatDate, formatSalary, isExpired } from '../utils/formatters';
 
 export function JobsPage() {
-  const toast = useToast();
+  const { toast } = useToast();
   const { user, isStudent } = useAuth();
 
   const [jobs, setJobs] = useState([]);
@@ -48,7 +48,7 @@ export function JobsPage() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState(''); 
+  const [statusFilter, setStatusFilter] = useState('');
 
   const [selectedJob, setSelectedJob] = useState(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
@@ -56,6 +56,10 @@ export function JobsPage() {
   const [jobToDelete, setJobToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Ineligibility popover active job ID
+  const [ineligibilityPopoverJobId, setIneligibilityPopoverJobId] = useState(null);
+  const popoverRef = useRef(null);
 
   const [applyJob, setApplyJob] = useState(null);
   const [selectedStudentId, setSelectedStudentId] = useState('');
@@ -109,10 +113,24 @@ export function JobsPage() {
     }
   }, [isStudent, user]);
 
-
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Click outside listener for ineligibility popover
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target)) {
+        setIneligibilityPopoverJobId(null);
+      }
+    };
+    if (ineligibilityPopoverJobId) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [ineligibilityPopoverJobId]);
 
   const userApplicationsMap = useMemo(() => {
     const map = {};
@@ -157,18 +175,18 @@ export function JobsPage() {
           reason: 'Already placed with an employer',
         };
       }
+      const reasons = [];
       if (job.minCgpa !== null && job.minCgpa !== undefined && studentProfile.cgpa < job.minCgpa) {
-        return {
-          eligible: false,
-          cgpaFailed: true,
-          reason: `CGPA (${studentProfile.cgpa}) is below required minimum (${job.minCgpa})`,
-        };
+        reasons.push(`CGPA (${studentProfile.cgpa}) is below required minimum (${job.minCgpa})`);
       }
       if (job.maxBacklogs !== null && job.maxBacklogs !== undefined && studentProfile.backlogs > job.maxBacklogs) {
+        reasons.push(`Active backlogs (${studentProfile.backlogs}) exceed maximum allowed (${job.maxBacklogs})`);
+      }
+      if (reasons.length > 0) {
         return {
           eligible: false,
-          backlogsFailed: true,
-          reason: `Active backlogs (${studentProfile.backlogs}) exceed maximum allowed (${job.maxBacklogs})`,
+          reasons,
+          reason: reasons.join(' · '),
         };
       }
     }
@@ -215,7 +233,7 @@ export function JobsPage() {
       await jobsApi.delete(jobToDelete.jobId);
       toast.success(`Job opening "${jobToDelete.jobTitle}" was removed.`);
       setJobToDelete(null);
-      loadData();
+      await loadData();
     } catch (err) {
       console.error('Failed to delete job:', err);
       toast.error(err.message || 'Cannot delete job with active student applications.');
@@ -245,25 +263,22 @@ export function JobsPage() {
         setIsApplying(true);
         setApplyError(null);
 
-        // Student applies directly using authenticated principal (no frontend-supplied student ID)
+        // Student applies directly using authenticated principal
         await proceduresApi.applyForJob(Number(applyJob.jobId));
 
-        toast.success(
-          `Application submitted successfully for Job #${applyJob.jobId} (${applyJob.jobTitle})!`
-        );
+        toast.success(`Application submitted successfully for "${applyJob.jobTitle}"!`);
         setApplyJob(null);
-        loadData();
+        await loadData();
       } catch (err) {
         console.error('Apply procedure failed:', err);
         const errorMsg =
           err?.data || err?.message || 'Application could not be processed due to eligibility or duplicate constraints.';
         setApplyError(errorMsg);
-        toast.error(errorMsg, 'Application Error');
+        toast.error(errorMsg);
       } finally {
         setIsApplying(false);
       }
     } else {
-      // Officer / Admin flow
       if (!applyJob || !selectedStudentId) {
         setApplyError('Please select a student candidate to apply.');
         return;
@@ -275,17 +290,15 @@ export function JobsPage() {
 
         await proceduresApi.applyForJob(Number(selectedStudentId), Number(applyJob.jobId));
 
-        toast.success(
-          `Application submitted successfully for Job #${applyJob.jobId} (${applyJob.jobTitle})!`
-        );
+        toast.success(`Application submitted for student #${selectedStudentId} to "${applyJob.jobTitle}"!`);
         setApplyJob(null);
-        loadData();
+        await loadData();
       } catch (err) {
         console.error('Apply procedure failed:', err);
         const errorMsg =
           err?.data || err?.message || 'Application could not be processed due to eligibility or duplicate constraints.';
         setApplyError(errorMsg);
-        toast.error(errorMsg, 'Application Ineligible');
+        toast.error(errorMsg);
       } finally {
         setIsApplying(false);
       }
@@ -358,7 +371,7 @@ export function JobsPage() {
         deadline: '',
         jobDescription: '',
       });
-      loadData();
+      await loadData();
     } catch (err) {
       console.error('Failed to create job opening:', err);
       toast.error(err.message || 'Failed to create job. Please verify Job ID uniqueness.');
@@ -368,148 +381,93 @@ export function JobsPage() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      
-      {/* Header section */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '1rem',
-        }}
-      >
-        <div>
-          <h2 style={{ fontSize: '1.45rem', fontWeight: 700, margin: 0 }}>
-            Job Opportunities
-          </h2>
-          <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
-            Campus recruitment drives, compensation packages, eligibility criteria, and application submission.
+    <div className="page-container">
+      {/* Page Header */}
+      <div className="page-header">
+        <div className="page-header-content">
+          <h1 className="page-title">Jobs</h1>
+          <p className="page-subtitle">
+            Campus recruitment drives, compensation packages, and eligibility criteria.
           </p>
         </div>
 
-        {!isStudent && (
-          <Button
-            variant="primary"
-            icon={Plus}
-            onClick={() => {
-              setFormErrors({});
-              setIsCreateModalOpen(true);
-            }}
-            id="btn-post-job"
+        <div className="page-header-actions">
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={loadData}
+            disabled={loading}
+            title="Refresh job openings"
           >
-            Post New Job
-          </Button>
-        )}
+            <RefreshCw size={16} className={loading ? 'spin' : ''} />
+            <span>Refresh</span>
+          </button>
+
+          {!isStudent && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                setFormErrors({});
+                setIsCreateModalOpen(true);
+              }}
+              id="btn-post-job"
+            >
+              <Plus size={16} />
+              <span>Post Job</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Student Eligibility Profile Banner */}
       {isStudent && studentProfile && (
         <div
-          className="card"
+          className="alert alert-info"
           style={{
-            padding: '1.25rem 1.5rem',
-            background: 'linear-gradient(135deg, var(--color-surface) 0%, var(--color-surface-hover) 100%)',
+            marginBottom: 'var(--space-6)',
+            padding: 'var(--space-4) var(--space-5)',
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '1.25rem',
+            flexDirection: 'column',
+            gap: 'var(--space-2)',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div
-              style={{
-                width: '3rem',
-                height: '3rem',
-                borderRadius: 'var(--radius-md)',
-                backgroundColor: 'var(--color-primary-subtle)',
-                color: 'var(--color-primary)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <GraduationCap size={24} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <GraduationCap size={18} style={{ color: 'var(--color-primary-600)', flexShrink: 0 }} />
+              <span style={{ fontWeight: 600, color: 'var(--color-text-primary)', fontSize: 'var(--text-sm)' }}>
+                Your Academic Profile:
+              </span>
+              <span className="badge badge-neutral" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                CGPA: <strong>{studentProfile.cgpa}</strong>
+              </span>
+              <span className={`badge ${studentProfile.backlogs > 0 ? 'badge-danger' : 'badge-success'}`}>
+                {studentProfile.backlogs} {studentProfile.backlogs === 1 ? 'Backlog' : 'Backlogs'}
+              </span>
+              <span className="badge badge-neutral">
+                {studentProfile.department?.departmentName || 'General'}
+              </span>
             </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>
-                  {studentProfile.name}
-                </h3>
-                <span className="badge badge-neutral">ID #{studentProfile.studentId}</span>
-              </div>
-              <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>
-                {studentProfile.department?.departmentName || 'Enrolled Student'} • Class of {studentProfile.graduationYear}
-              </p>
+
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+              Applications Submitted: <strong style={{ color: 'var(--color-text-primary)' }}>{Object.keys(userApplicationsMap).length}</strong>
             </div>
           </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1.75rem', flexWrap: 'wrap' }}>
-            <div>
-              <div style={{ fontSize: '0.725rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Your CGPA
-              </div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>
-                {studentProfile.cgpa}
-              </div>
-            </div>
-
-            <div>
-              <div style={{ fontSize: '0.725rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Active Backlogs
-              </div>
-              <div
-                style={{
-                  fontSize: '1.2rem',
-                  fontWeight: 700,
-                  color: studentProfile.backlogs > 0 ? 'var(--color-danger)' : 'var(--color-success)',
-                }}
-              >
-                {studentProfile.backlogs}
-              </div>
-            </div>
-
-            <div>
-              <div style={{ fontSize: '0.725rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Placement Status
-              </div>
-              <div style={{ marginTop: '2px' }}>
-                <StatusBadge status={studentProfile.placementStatus} />
-              </div>
-            </div>
-
-            <div>
-              <div style={{ fontSize: '0.725rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Submitted Applications
-              </div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--color-primary)' }}>
-                {Object.keys(userApplicationsMap).length}
-              </div>
-            </div>
-          </div>
+          <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
+            Eligibility is automatically evaluated against each recruitment drive's minimum CGPA and maximum backlog limits.
+          </p>
         </div>
       )}
 
-      {/* Search and Filters Bar */}
-      <div
-        className="card"
-        style={{
-          padding: '1rem',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '0.85rem',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap', flex: 1 }}>
+      {/* Main Content Card */}
+      <Card>
+        {/* FilterBar */}
+        <div className="filter-bar" style={{ marginBottom: 'var(--space-4)' }}>
           <SearchInput
             value={searchQuery}
             onChange={setSearchQuery}
-            placeholder="Search role, company, type..."
+            placeholder="Search by role, company, type..."
+            className="filter-search"
             id="job-search-input"
           />
 
@@ -534,529 +492,648 @@ export function JobsPage() {
               className="form-select"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              aria-label="Filter by Deadline Status"
+              aria-label="Filter by Status"
             >
               <option value="">All Postings</option>
               <option value="ACTIVE">Active (Accepting)</option>
               <option value="EXPIRED">Expired</option>
             </select>
           </div>
-        </div>
 
-        <div style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', fontWeight: 500 }}>
-          Showing <strong>{filteredJobs.length}</strong> of <strong>{jobs.length}</strong> positions
-        </div>
-      </div>
+          {(searchQuery || companyFilter || statusFilter) && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => {
+                setSearchQuery('');
+                setCompanyFilter('');
+                setStatusFilter('');
+              }}
+            >
+              Clear filters
+            </button>
+          )}
 
-      {/* Main Content Area */}
-      {loading ? (
-        <SkeletonTable rows={5} columns={6} />
-      ) : error ? (
-        <ErrorState
-          title="Could Not Load Job Openings"
-          message={error}
-          onRetry={loadData}
-        />
-      ) : filteredJobs.length === 0 ? (
-        <EmptyState
-          icon={Briefcase}
-          title="No Job Openings Found"
-          description={
-            searchQuery || companyFilter || statusFilter
-              ? 'No jobs match your filter criteria. Try clearing the filters.'
-              : 'There are currently no job opportunities posted.'
-          }
-          actionText={!isStudent ? 'Post New Job' : undefined}
-          actionIcon={!isStudent ? Plus : undefined}
-          onAction={!isStudent ? () => setIsCreateModalOpen(true) : undefined}
-        />
-      ) : (
-        <div className="card" style={{ overflow: 'hidden' }}>
-          <div className="table-container" style={{ border: 'none', borderRadius: 0 }}>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Job ID</th>
-                  <th>Title & Company</th>
-                  <th>Type</th>
-                  <th>Package (CTC)</th>
-                  <th>Eligibility</th>
-                  <th>Deadline</th>
-                  <th style={{ textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredJobs.map((job) => {
-                  const expired = isExpired(job.deadline);
-                  const eligibility = getEligibilityStatus(job);
-
-                  return (
-                    <tr key={job.jobId}>
-                      <td style={{ fontWeight: 600, color: 'var(--color-text-muted)' }}>
-                        #{job.jobId}
-                      </td>
-                      <td>
-                        <div style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                          {job.jobTitle}
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                          <Building2 size={12} />
-                          <span>{job.company?.companyName}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <span className="badge badge-neutral">
-                          {job.jobType || 'Full Time'}
-                        </span>
-                      </td>
-                      <td>
-                        <div style={{ fontWeight: 700, color: 'var(--color-primary)', fontSize: '0.95rem' }}>
-                          {formatSalary(job.packageAmount)}
-                        </div>
-                      </td>
-                      <td>
-                        <div style={{ fontSize: '0.785rem', color: 'var(--color-text-secondary)' }}>
-                          <div>Min CGPA: <strong>{job.minCgpa ?? '—'}</strong></div>
-                          <div>Max Backlogs: <strong>{job.maxBacklogs ?? 0}</strong></div>
-                          
-                          {/* Student Specific Eligibility Badge */}
-                          {isStudent && (
-                            <div style={{ marginTop: '0.35rem' }}>
-                              {eligibility.alreadyApplied ? (
-                                <span className="badge badge-info" title={eligibility.reason}>
-                                  Applied: {eligibility.status}
-                                </span>
-                              ) : eligibility.expired ? (
-                                <span className="badge badge-warning" title={eligibility.reason}>
-                                  Deadline Passed
-                                </span>
-                              ) : eligibility.eligible ? (
-                                <span className="badge badge-success">
-                                  <CheckCircle2 size={11} /> Eligible
-                                </span>
-                              ) : (
-                                <span className="badge badge-danger" title={eligibility.reason}>
-                                  <AlertCircle size={11} /> Ineligible
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                          <span style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
-                            {formatDate(job.deadline)}
-                          </span>
-                          {expired ? (
-                            <StatusBadge status="EXPIRED" />
-                          ) : (
-                            <StatusBadge status="ACTIVE" />
-                          )}
-                        </div>
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                          {/* Apply action button */}
-                          {isStudent ? (
-                            eligibility.alreadyApplied ? (
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                icon={CheckCircle2}
-                                disabled
-                                title={`Already applied (Status: ${eligibility.status})`}
-                              >
-                                Applied
-                              </Button>
-                            ) : eligibility.expired ? (
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                disabled
-                                title="Application deadline has passed"
-                              >
-                                Expired
-                              </Button>
-                            ) : !eligibility.eligible ? (
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                disabled
-                                title={eligibility.reason}
-                              >
-                                Ineligible
-                              </Button>
-                            ) : (
-                              <Button
-                                variant="primary"
-                                size="sm"
-                                icon={Send}
-                                onClick={() => handleOpenApply(job)}
-                                id={`btn-apply-job-${job.jobId}`}
-                              >
-                                Apply Now
-                              </Button>
-                            )
-                          ) : (
-                            <Button
-                              variant="primary"
-                              size="sm"
-                              icon={Send}
-                              onClick={() => handleOpenApply(job)}
-                              disabled={expired}
-                              title={expired ? 'Application deadline expired' : 'Apply candidate for this job'}
-                              id={`btn-apply-job-${job.jobId}`}
-                            >
-                              Apply
-                            </Button>
-                          )}
-
-                          {/* View details */}
-                          <button
-                            type="button"
-                            className="icon-btn icon-btn-sm"
-                            onClick={() => handleView(job)}
-                            aria-label={`View details of ${job.jobTitle}`}
-                            title="View Details"
-                          >
-                            <Eye size={15} />
-                          </button>
-
-                          {/* Delete action: Officer/Admin only */}
-                          {!isStudent && (
-                            <button
-                              type="button"
-                              className="icon-btn icon-btn-sm"
-                              onClick={() => setJobToDelete(job)}
-                              aria-label={`Delete job ${job.jobTitle}`}
-                              title="Delete Job"
-                              style={{ color: 'var(--color-danger)' }}
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+            Showing <strong style={{ color: 'var(--color-text-primary)' }}>{filteredJobs.length}</strong> of{' '}
+            <strong style={{ color: 'var(--color-text-primary)' }}>{jobs.length}</strong> positions
           </div>
         </div>
-      )}
+
+        {/* State Management */}
+        {loading ? (
+          <SkeletonTable rows={5} cols={6} />
+        ) : error ? (
+          <ErrorState
+            title="Couldn't load job opportunities"
+            message={error}
+            onRetry={loadData}
+          />
+        ) : filteredJobs.length === 0 ? (
+          <EmptyState
+            title={searchQuery || companyFilter || statusFilter ? 'No matching jobs' : 'No job drives listed'}
+            message={
+              searchQuery || companyFilter || statusFilter
+                ? 'No jobs match your filter criteria. Try clearing the search or filters.'
+                : isStudent
+                ? 'No recruitment drives are currently active. Check back soon for upcoming campus visits.'
+                : 'There are currently no job opportunities posted. Post a new drive above.'
+            }
+            action={
+              searchQuery || companyFilter || statusFilter ? (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setCompanyFilter('');
+                    setStatusFilter('');
+                  }}
+                >
+                  Clear filters
+                </button>
+              ) : !isStudent ? (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => setIsCreateModalOpen(true)}
+                >
+                  <Plus size={15} />
+                  <span>Post Job</span>
+                </button>
+              ) : null
+            }
+          />
+        ) : (
+          <>
+            {/* Desktop Table View (≥768px) */}
+            <div className="table-responsive">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th style={{ minWidth: '240px' }}>Job & Company</th>
+                    <th style={{ width: '120px' }}>Type</th>
+                    <th className="col-numeric" style={{ width: '130px', textAlign: 'right' }}>Package (CTC)</th>
+                    <th style={{ width: '180px' }}>Eligibility Criteria</th>
+                    <th className="col-date" style={{ width: '140px' }}>Deadline</th>
+                    <th className="col-actions" style={{ width: isStudent ? '160px' : '150px', textAlign: 'right' }}>Status & Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredJobs.map((job) => {
+                    const expired = isExpired(job.deadline);
+                    const eligibility = getEligibilityStatus(job);
+                    const isPopoverOpen = ineligibilityPopoverJobId === job.jobId;
+
+                    return (
+                      <tr key={job.jobId}>
+                        {/* 1. Job & Company */}
+                        <td style={{ minWidth: '240px' }}>
+                          <div style={{ fontWeight: 600, color: 'var(--color-text-primary)', wordBreak: 'break-word' }}>
+                            {job.jobTitle}
+                          </div>
+                          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: 'var(--space-1)', marginTop: '2px', flexWrap: 'wrap' }}>
+                            <Building2 size={12} style={{ flexShrink: 0 }} />
+                            <span style={{ fontWeight: 500 }}>{job.company?.companyName}</span>
+                            <span>•</span>
+                            <span style={{ fontFamily: 'var(--font-mono)' }}>#{job.jobId}</span>
+                          </div>
+                        </td>
+
+                        {/* 2. Type */}
+                        <td style={{ width: '120px' }}>
+                          <CategoryTag label={job.jobType || 'Full Time'} />
+                        </td>
+
+                        {/* 3. Package (CTC) */}
+                        <td className="col-numeric" style={{ width: '130px', textAlign: 'right' }}>
+                          <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                            <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--color-primary-600)' }}>
+                              {formatSalary(job.packageAmount)}
+                            </span>
+                            <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>CTC / annum</span>
+                          </div>
+                        </td>
+
+                        {/* 4. Eligibility Criteria */}
+                        <td style={{ width: '180px' }}>
+                          <div style={{ fontSize: 'var(--text-xs)', fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-secondary)', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+                              <span style={{ color: 'var(--color-text-muted)' }}>Min CGPA:</span>
+                              <strong style={{ color: 'var(--color-text-primary)' }}>{job.minCgpa != null ? Number(job.minCgpa).toFixed(1) : '0.0'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+                              <span style={{ color: 'var(--color-text-muted)' }}>Max Backlogs:</span>
+                              <strong style={{ color: 'var(--color-text-primary)' }}>{job.maxBacklogs ?? 0}</strong>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* 5. Deadline */}
+                        <td className="col-date" style={{ width: '140px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <span style={{ fontSize: 'var(--text-xs)', color: expired ? 'var(--color-danger-600)' : 'var(--color-text-secondary)', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>
+                              {formatDate(job.deadline)}
+                            </span>
+                            <div>
+                              {expired ? (
+                                <StatusBadge status="EXPIRED" />
+                              ) : (
+                                <StatusBadge status="ACTIVE" />
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* 6. Status & Actions */}
+                        <td className="col-actions" style={{ width: isStudent ? '160px' : '150px', textAlign: 'right' }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)', justifyContent: 'flex-end', position: 'relative' }}>
+                            {isStudent ? (
+                              eligibility.alreadyApplied ? (
+                                <StatusBadge status={eligibility.status} />
+                              ) : expired ? (
+                                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>Closed</span>
+                              ) : !eligibility.eligible ? (
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+                                  <StatusBadge status="REJECTED" label="Ineligible" />
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost btn-sm"
+                                    style={{ padding: '4px', height: '24px', width: '24px' }}
+                                    onClick={() => setIneligibilityPopoverJobId(isPopoverOpen ? null : job.jobId)}
+                                    title="View ineligibility reason"
+                                    aria-label="View ineligibility details"
+                                  >
+                                    <Info size={14} style={{ color: 'var(--color-danger-600)' }} />
+                                  </button>
+
+                                  {/* Ineligibility Popover */}
+                                  {isPopoverOpen && (
+                                    <div
+                                      ref={popoverRef}
+                                      className="popover"
+                                      style={{
+                                        position: 'absolute',
+                                        right: 0,
+                                        top: '100%',
+                                        zIndex: 40,
+                                        backgroundColor: 'var(--color-surface-elevated)',
+                                        border: '1px solid var(--color-border)',
+                                        borderRadius: 'var(--radius-md)',
+                                        boxShadow: 'var(--shadow-3)',
+                                        padding: 'var(--space-3)',
+                                        width: '260px',
+                                        textAlign: 'left',
+                                        marginTop: '4px',
+                                      }}
+                                    >
+                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-2)' }}>
+                                        <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--color-danger-600)' }}>
+                                          Ineligibility Assessment
+                                        </span>
+                                        <button
+                                          type="button"
+                                          className="btn btn-ghost btn-sm"
+                                          style={{ padding: 2, height: 20, width: 20 }}
+                                          onClick={() => setIneligibilityPopoverJobId(null)}
+                                        >
+                                          <X size={12} />
+                                        </button>
+                                      </div>
+                                      <ul style={{ margin: 0, paddingLeft: 'var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        {(eligibility.reasons || [eligibility.reason]).map((r, idx) => (
+                                          <li key={idx}>{r}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="btn btn-primary btn-sm"
+                                  onClick={() => handleOpenApply(job)}
+                                  id={`btn-apply-job-${job.jobId}`}
+                                >
+                                  <Send size={13} />
+                                  <span>Apply</span>
+                                </button>
+                              )
+                            ) : (
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => handleOpenApply(job)}
+                                disabled={expired}
+                                title={expired ? 'Application deadline expired' : 'Apply candidate'}
+                                id={`btn-apply-job-${job.jobId}`}
+                              >
+                                <Send size={13} />
+                                <span>Apply</span>
+                              </button>
+                            )}
+
+                            {/* View details button */}
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm"
+                              onClick={() => handleView(job)}
+                              aria-label={`View details of ${job.jobTitle}`}
+                              title="View details"
+                            >
+                              <Eye size={15} />
+                            </button>
+
+                            {/* Delete action for Officer/Admin */}
+                            {!isStudent && (
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm text-danger"
+                                onClick={() => setJobToDelete(job)}
+                                aria-label={`Delete job ${job.jobTitle}`}
+                                title="Delete job"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Data Cards View (<768px) */}
+            <div className="data-card-list">
+              {filteredJobs.map((job) => {
+                const expired = isExpired(job.deadline);
+                const eligibility = getEligibilityStatus(job);
+
+                return (
+                  <div key={job.jobId} className="data-card">
+                    <div className="data-card-header">
+                      <div>
+                        <div className="data-card-title">{job.jobTitle}</div>
+                        <div className="data-card-subtitle">{job.company?.companyName} • #{job.jobId}</div>
+                      </div>
+                      <div className="data-card-badge">
+                        {isStudent ? (
+                          eligibility.alreadyApplied ? (
+                            <StatusBadge status={eligibility.status} />
+                          ) : expired ? (
+                            <StatusBadge status="EXPIRED" />
+                          ) : eligibility.eligible ? (
+                            <StatusBadge status="ACTIVE" label="Eligible" />
+                          ) : (
+                            <StatusBadge status="REJECTED" label="Ineligible" />
+                          )
+                        ) : (
+                          <StatusBadge status={expired ? 'EXPIRED' : 'ACTIVE'} />
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="data-card-grid">
+                      <div className="data-card-field">
+                        <div className="data-card-field-label">Package (CTC)</div>
+                        <div className="data-card-field-value" style={{ fontWeight: 600 }}>
+                          {formatSalary(job.packageAmount)}
+                        </div>
+                      </div>
+                      <div className="data-card-field">
+                        <div className="data-card-field-label">Type</div>
+                        <div className="data-card-field-value">
+                          <CategoryTag label={job.jobType || 'Full Time'} />
+                        </div>
+                      </div>
+                      <div className="data-card-field">
+                        <div className="data-card-field-label">Criteria</div>
+                        <div className="data-card-field-value" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                          ≥ {job.minCgpa} CGPA • ≤ {job.maxBacklogs} BL
+                        </div>
+                      </div>
+                      <div className="data-card-field">
+                        <div className="data-card-field-label">Deadline</div>
+                        <div className="data-card-field-value">
+                          {formatDate(job.deadline)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="data-card-footer">
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => handleView(job)}
+                        style={{ flex: 1 }}
+                      >
+                        <Eye size={14} />
+                        <span>View Details</span>
+                      </button>
+
+                      {isStudent ? (
+                        eligibility.eligible && !expired && !eligibility.alreadyApplied && (
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm"
+                            onClick={() => handleOpenApply(job)}
+                            style={{ flex: 1 }}
+                          >
+                            <Send size={14} />
+                            <span>Apply Now</span>
+                          </button>
+                        )
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          onClick={() => handleOpenApply(job)}
+                          disabled={expired}
+                          style={{ flex: 1 }}
+                        >
+                          <Send size={14} />
+                          <span>Apply</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </Card>
 
       {/* Apply Candidate Modal */}
-      <Modal
-        isOpen={!!applyJob}
-        onClose={() => setApplyJob(null)}
-        title={isStudent ? `Apply for ${applyJob?.jobTitle}` : `Apply Candidate for Job #${applyJob?.jobId}`}
-        footer={
-          <>
-            <Button
-              variant="secondary"
-              onClick={() => setApplyJob(null)}
-              disabled={isApplying}
-            >
-              Cancel
-            </Button>
-            {isStudent ? (
-              <Button
-                variant="primary"
-                icon={Send}
-                onClick={handleApplyProcedure}
-                isLoading={isApplying}
-                disabled={applyJob && !getEligibilityStatus(applyJob).eligible}
-                id="submit-apply-procedure-btn"
+      {applyJob && (
+        <Modal
+          isOpen={!!applyJob}
+          onClose={() => !isApplying && setApplyJob(null)}
+          title={isStudent ? `Apply for ${applyJob.jobTitle}` : `Apply Candidate for Job #${applyJob.jobId}`}
+          size="md"
+          footer={
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)', width: '100%' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setApplyJob(null)}
+                disabled={isApplying}
               >
-                Confirm & Submit Application
-              </Button>
-            ) : (
-              <Button
-                variant="primary"
-                icon={Send}
-                onClick={handleApplyProcedure}
-                isLoading={isApplying}
-                disabled={!selectedStudentId}
-                id="submit-apply-procedure-btn"
-              >
-                Submit Application
-              </Button>
-            )}
-          </>
-        }
-      >
-        {applyJob && (
+                Cancel
+              </button>
+              {isStudent ? (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleApplyProcedure}
+                  disabled={isApplying || !getEligibilityStatus(applyJob).eligible}
+                  id="submit-apply-procedure-btn"
+                >
+                  {isApplying ? (
+                    <>
+                      <RefreshCw size={15} className="spin" />
+                      <span>Submitting…</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send size={15} />
+                      <span>Confirm & Apply</span>
+                    </>
+                  )}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleApplyProcedure}
+                  disabled={isApplying || !selectedStudentId}
+                  id="submit-apply-procedure-btn"
+                >
+                  {isApplying ? (
+                    <>
+                      <RefreshCw size={15} className="spin" />
+                      <span>Submitting…</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send size={15} />
+                      <span>Submit Application</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          }
+        >
           <form onSubmit={handleApplyProcedure}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+              {/* Job summary card */}
               <div
                 style={{
                   backgroundColor: 'var(--color-surface-hover)',
                   border: '1px solid var(--color-border)',
                   borderRadius: 'var(--radius-md)',
-                  padding: '1rem',
+                  padding: 'var(--space-4)',
                 }}
               >
-                <div style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--color-text-primary)' }}>
+                <div style={{ fontWeight: 600, fontSize: 'var(--text-base)', color: 'var(--color-text-primary)' }}>
                   {applyJob.jobTitle}
                 </div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
-                  Company: <strong>{applyJob.company?.companyName}</strong> • Package: <strong>{formatSalary(applyJob.packageAmount)}</strong>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', marginTop: 'var(--space-1)' }}>
+                  Hiring Company: <strong>{applyJob.company?.companyName}</strong> • Package: <strong>{formatSalary(applyJob.packageAmount)}</strong>
                 </div>
-                <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', fontSize: '0.785rem', flexWrap: 'wrap' }}>
-                  <span>Required CGPA: <strong>≥ {applyJob.minCgpa}</strong></span>
+                <div style={{ display: 'flex', gap: 'var(--space-3)', marginTop: 'var(--space-2)', fontSize: 'var(--text-xs)', flexWrap: 'wrap', fontVariantNumeric: 'tabular-nums' }}>
+                  <span>Min CGPA: <strong>≥ {applyJob.minCgpa}</strong></span>
                   <span>Max Backlogs: <strong>≤ {applyJob.maxBacklogs}</strong></span>
                   <span>Deadline: <strong>{formatDate(applyJob.deadline)}</strong></span>
                 </div>
               </div>
 
               {applyError && (
-                <div
-                  style={{
-                    backgroundColor: 'var(--color-danger-bg)',
-                    border: '1px solid var(--color-danger-border)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: '0.75rem 1rem',
-                    color: 'var(--color-danger-text)',
-                    fontSize: '0.85rem',
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '0.5rem',
-                  }}
-                >
-                  <AlertCircle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
-                  <div>
-                    <strong>Application Error:</strong> {applyError}
-                  </div>
+                <div className="alert alert-danger" role="alert">
+                  <AlertCircle size={16} />
+                  <span>{applyError}</span>
                 </div>
               )}
 
               {/* Student specific confirmation vs Officer selection */}
               {isStudent ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  <div
-                    style={{
-                      border: '1px solid var(--color-border)',
-                      borderRadius: 'var(--radius-md)',
-                      padding: '0.85rem 1rem',
-                      backgroundColor: 'var(--color-surface)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
-                      <User size={14} style={{ color: 'var(--color-primary)' }} />
-                      <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
-                        Candidate Roll Information
-                      </span>
-                    </div>
-                    <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>
-                      {studentProfile?.name || user?.email} (Student ID #{user?.studentId})
-                    </div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', marginTop: '0.25rem' }}>
-                      CGPA: <strong>{studentProfile?.cgpa ?? '—'}</strong> • Active Backlogs: <strong>{studentProfile?.backlogs ?? '—'}</strong> • Placement Status: <strong>{studentProfile?.placementStatus ?? '—'}</strong>
-                    </div>
-                  </div>
-
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
                   {(() => {
                     const status = getEligibilityStatus(applyJob);
                     if (status.eligible) {
                       return (
-                        <div
-                          style={{
-                            padding: '0.75rem 1rem',
-                            backgroundColor: 'var(--color-success-bg)',
-                            border: '1px solid var(--color-success-border)',
-                            color: 'var(--color-success-text)',
-                            borderRadius: 'var(--radius-md)',
-                            fontSize: '0.85rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.5rem',
-                          }}
-                        >
-                          <CheckCircle2 size={18} style={{ flexShrink: 0 }} />
-                          <span>You meet all academic criteria (CGPA ≥ {applyJob.minCgpa}, backlogs ≤ {applyJob.maxBacklogs}) and are eligible to apply.</span>
+                        <div className="alert alert-success">
+                          <CheckCircle2 size={16} />
+                          <span>
+                            You meet all academic criteria (CGPA ≥ {applyJob.minCgpa}, backlogs ≤ {applyJob.maxBacklogs}) and are eligible to apply.
+                          </span>
                         </div>
                       );
                     }
                     return (
-                      <div
-                        style={{
-                          padding: '0.75rem 1rem',
-                          backgroundColor: 'var(--color-danger-bg)',
-                          border: '1px solid var(--color-danger-border)',
-                          color: 'var(--color-danger-text)',
-                          borderRadius: 'var(--radius-md)',
-                          fontSize: '0.85rem',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.5rem',
-                        }}
-                      >
-                        <AlertCircle size={18} style={{ flexShrink: 0 }} />
+                      <div className="alert alert-danger">
+                        <AlertCircle size={16} />
                         <span>Ineligible to apply: {status.reason}</span>
                       </div>
                     );
                   })()}
 
-                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                    Your application will be submitted directly via the stored procedure using your authenticated student roll number.
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                    Your application will be submitted directly via verified stored procedure using your student profile credentials.
                   </div>
                 </div>
               ) : (
-                <div>
-                  <label className="form-label" htmlFor="select-candidate-student">
-                    Select Student Candidate <span className="form-required">*</span>
-                  </label>
-                  <select
-                    id="select-candidate-student"
-                    className="form-select"
-                    value={selectedStudentId}
-                    onChange={(e) => {
-                      setSelectedStudentId(e.target.value);
-                      setApplyError(null);
-                    }}
-                    required
-                  >
-                    <option value="" disabled>
-                      Choose an enrolled student...
-                    </option>
-                    {students.map((s) => (
-                      <option key={s.studentId} value={s.studentId}>
-                        {s.name} (ID: {s.studentId}) — CGPA: {s.cgpa}, Backlogs: {s.backlogs}, Status: {s.placementStatus}
-                      </option>
-                    ))}
-                  </select>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '4px' }}>
-                    Procedure executes verification: checks candidate existence, unplaced status, CGPA requirement, backlogs, and prevents duplicate applications.
-                  </div>
-                </div>
+                <FormSelect
+                  label="Select Student Candidate"
+                  name="candidateStudent"
+                  value={selectedStudentId}
+                  onChange={(e) => {
+                    setSelectedStudentId(e.target.value);
+                    setApplyError(null);
+                  }}
+                  options={students.map((s) => ({
+                    value: s.studentId,
+                    label: `${s.name} (ID: ${s.studentId}) — CGPA: ${s.cgpa}, Backlogs: ${s.backlogs}, Status: ${s.placementStatus}`,
+                  }))}
+                  required
+                  helperText="Stored procedure validates CGPA, backlogs, and checks for existing active applications."
+                />
               )}
             </div>
           </form>
-        )}
-      </Modal>
+        </Modal>
+      )}
 
-      {/* View Job Opening Modal */}
-      <Modal
-        isOpen={isViewModalOpen}
-        onClose={() => setIsViewModalOpen(false)}
-        title="Job Opening Details"
-        size="lg"
-        footer={
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.75rem', width: '100%' }}>
-            <Button variant="secondary" onClick={() => setIsViewModalOpen(false)}>
-              Close
-            </Button>
-            {isStudent && selectedJob && (() => {
-              const status = getEligibilityStatus(selectedJob);
-              if (status.alreadyApplied) {
+      {/* View Job Opening Modal (lg) */}
+      {isViewModalOpen && selectedJob && (
+        <Modal
+          isOpen={isViewModalOpen}
+          onClose={() => setIsViewModalOpen(false)}
+          title="Job Opening Details"
+          size="lg"
+          footer={
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 'var(--space-2)', width: '100%' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setIsViewModalOpen(false)}
+              >
+                Close
+              </button>
+              {isStudent && (() => {
+                const status = getEligibilityStatus(selectedJob);
+                if (status.alreadyApplied) {
+                  return (
+                    <button type="button" className="btn btn-secondary" disabled>
+                      Applied ({status.status})
+                    </button>
+                  );
+                }
+                if (status.eligible) {
+                  return (
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => {
+                        setIsViewModalOpen(false);
+                        handleOpenApply(selectedJob);
+                      }}
+                    >
+                      <Send size={15} />
+                      <span>Apply for this Job</span>
+                    </button>
+                  );
+                }
                 return (
-                  <Button variant="secondary" icon={CheckCircle2} disabled>
-                    Applied ({status.status})
-                  </Button>
+                  <button type="button" className="btn btn-secondary" disabled title={status.reason}>
+                    Ineligible
+                  </button>
                 );
-              }
-              if (status.eligible) {
-                return (
-                  <Button
-                    variant="primary"
-                    icon={Send}
-                    onClick={() => {
-                      setIsViewModalOpen(false);
-                      handleOpenApply(selectedJob);
-                    }}
-                  >
-                    Apply for this Job
-                  </Button>
-                );
-              }
-              return (
-                <Button variant="secondary" disabled title={status.reason}>
-                  Ineligible
-                </Button>
-              );
-            })()}
-          </div>
-        }
-      >
-        {selectedJob && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+              })()}
+            </div>
+          }
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: '1.25rem' }}>{selectedJob.jobTitle}</h3>
-                <span style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}>
+                <h3 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 600 }}>{selectedJob.jobTitle}</h3>
+                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
                   {selectedJob.company?.companyName} • ID #{selectedJob.jobId}
                 </span>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--color-primary)' }}>
+                <div style={{ fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--color-primary-600)', fontVariantNumeric: 'tabular-nums' }}>
                   {formatSalary(selectedJob.packageAmount)}
                 </div>
-                <span className="badge badge-neutral">{selectedJob.jobType || 'Full Time'}</span>
+                <CategoryTag label={selectedJob.jobType || 'Full Time'} />
               </div>
             </div>
 
+            {/* Definition Grid */}
             <div
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(3, 1fr)',
-                gap: '1rem',
+                gap: 'var(--space-3)',
                 backgroundColor: 'var(--color-surface-hover)',
-                padding: '1rem',
+                padding: 'var(--space-4)',
                 borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-border)',
               }}
             >
               <div>
-                <div style={{ fontSize: '0.725rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>
                   Minimum CGPA
                 </div>
-                <div style={{ fontSize: '1.1rem', fontWeight: 700, marginTop: '2px', color: 'var(--color-primary)' }}>
+                <div style={{ fontSize: 'var(--text-base)', fontWeight: 700, marginTop: '2px', color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums' }}>
                   {selectedJob.minCgpa ?? 'N/A'}
                 </div>
               </div>
 
               <div>
-                <div style={{ fontSize: '0.725rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
-                  Max Backlogs Allowed
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>
+                  Max Backlogs
                 </div>
-                <div style={{ fontSize: '1.1rem', fontWeight: 700, marginTop: '2px' }}>
+                <div style={{ fontSize: 'var(--text-base)', fontWeight: 700, marginTop: '2px', color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums' }}>
                   {selectedJob.maxBacklogs ?? 0}
                 </div>
               </div>
 
               <div>
-                <div style={{ fontSize: '0.725rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>
                   Application Deadline
                 </div>
-                <div style={{ fontSize: '0.95rem', fontWeight: 600, marginTop: '2px' }}>
+                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginTop: '2px', color: 'var(--color-text-primary)' }}>
                   {formatDate(selectedJob.deadline)}
                 </div>
               </div>
             </div>
 
-            {/* Student specific eligibility breakdown inside view modal */}
+            {/* Student specific eligibility breakdown */}
             {isStudent && (
               <div
                 style={{
                   border: '1px solid var(--color-border)',
                   borderRadius: 'var(--radius-md)',
-                  padding: '1rem',
+                  padding: 'var(--space-3) var(--space-4)',
                   backgroundColor: 'var(--color-surface)',
                 }}
               >
-                <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--color-text-primary)' }}>
+                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, marginBottom: 'var(--space-1)', color: 'var(--color-text-primary)' }}>
                   Your Eligibility Assessment
                 </div>
                 {(() => {
                   const status = getEligibilityStatus(selectedJob);
                   return (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.825rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: 'var(--text-xs)' }}>
                       <div>
                         Status: <strong>{status.alreadyApplied ? `Already Applied (${status.status})` : status.eligible ? 'Eligible' : 'Ineligible'}</strong>
                       </div>
                       {!status.eligible && (
-                        <div style={{ color: 'var(--color-danger)' }}>
+                        <div style={{ color: 'var(--color-danger-600)' }}>
                           Reason: {status.reason}
                         </div>
                       )}
@@ -1066,47 +1143,69 @@ export function JobsPage() {
               </div>
             )}
 
+            {/* Formatted Job Description */}
             <div>
-              <h4 style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.5rem' }}>
+              <h4 style={{ fontSize: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)' }}>
                 Role Description & Requirements
               </h4>
-              <p style={{ fontSize: '0.875rem', lineHeight: 1.6, color: 'var(--color-text-secondary)', whiteSpace: 'pre-wrap' }}>
+              <div
+                style={{
+                  maxWidth: '65ch',
+                  fontSize: 'var(--text-sm)',
+                  lineHeight: 1.6,
+                  color: 'var(--color-text-secondary)',
+                  whiteSpace: 'pre-wrap',
+                  backgroundColor: 'var(--color-surface-hover)',
+                  padding: 'var(--space-4)',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--color-border)',
+                }}
+              >
                 {selectedJob.jobDescription || 'No description provided for this opening.'}
-              </p>
+              </div>
             </div>
           </div>
-        )}
-      </Modal>
+        </Modal>
+      )}
 
-      {/* Post New Job Opening Modal: Officer/Admin only */}
-      {!isStudent && (
+      {/* Post New Job Opening Modal (lg) */}
+      {!isStudent && isCreateModalOpen && (
         <Modal
           isOpen={isCreateModalOpen}
-          onClose={() => setIsCreateModalOpen(false)}
+          onClose={() => !isSubmitting && setIsCreateModalOpen(false)}
           title="Post New Job Opening"
           size="lg"
           footer={
-            <>
-              <Button
-                variant="secondary"
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)', width: '100%' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
                 onClick={() => setIsCreateModalOpen(false)}
                 disabled={isSubmitting}
               >
                 Cancel
-              </Button>
-              <Button
-                variant="primary"
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
                 onClick={handleCreateJob}
-                isLoading={isSubmitting}
+                disabled={isSubmitting}
                 id="submit-post-job-btn"
               >
-                Publish Job
-              </Button>
-            </>
+                {isSubmitting ? (
+                  <>
+                    <RefreshCw size={15} className="spin" />
+                    <span>Publishing…</span>
+                  </>
+                ) : (
+                  <span>Publish Job</span>
+                )}
+              </button>
+            </div>
           }
         >
           <form onSubmit={handleCreateJob}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--space-4)' }}>
               <FormInput
                 label="Job ID"
                 name="jobId"
@@ -1116,7 +1215,8 @@ export function JobsPage() {
                 placeholder="e.g. 209"
                 required
                 error={formErrors.jobId}
-                helpText="Unique numeric job identifier"
+                helperText="Unique numeric job identifier"
+                min={1}
               />
 
               <FormSelect
@@ -1165,7 +1265,7 @@ export function JobsPage() {
                 placeholder="e.g. 800000"
                 required
                 error={formErrors.packageAmount}
-                helpText="e.g. 800000 = ₹8.00 LPA"
+                helperText="e.g. 800000 = ₹8.00 LPA"
               />
 
               <FormInput
@@ -1205,14 +1305,17 @@ export function JobsPage() {
               />
             </div>
 
-            <div style={{ marginTop: '1rem' }}>
-              <FormTextarea
-                label="Job Description"
-                name="jobDescription"
+            <div style={{ marginTop: 'var(--space-4)' }}>
+              <label className="form-label" htmlFor="job-description-field">
+                Role Description
+              </label>
+              <textarea
+                id="job-description-field"
+                className="form-textarea"
                 value={formData.jobDescription}
                 onChange={(e) => setFormData({ ...formData, jobDescription: e.target.value })}
-                placeholder="Describe requirements, responsibilities, and eligibility..."
-                rows={3}
+                placeholder="Describe role responsibilities, team, skills required..."
+                rows={4}
               />
             </div>
           </form>
@@ -1220,17 +1323,21 @@ export function JobsPage() {
       )}
 
       {/* Confirm Delete Dialog */}
-      <ConfirmDialog
-        isOpen={!!jobToDelete}
-        onClose={() => setJobToDelete(null)}
-        onConfirm={handleDelete}
-        title="Delete Job Opening"
-        message={`Are you sure you want to delete job "${jobToDelete?.jobTitle}" (#${jobToDelete?.jobId})?`}
-        confirmText="Delete Job"
-        isLoading={isDeleting}
-      />
+      {jobToDelete && !isStudent && (
+        <ConfirmDialog
+          isOpen={!!jobToDelete}
+          onClose={() => !isDeleting && setJobToDelete(null)}
+          onConfirm={handleDelete}
+          title="Delete this job opening?"
+          type="danger"
+          confirmLabel="Delete Job"
+          confirmLoading={isDeleting}
+          message={`Are you sure you want to delete job "${jobToDelete.jobTitle}" (ID #${jobToDelete.jobId})? Active applications may block this deletion.`}
+        />
+      )}
     </div>
   );
 }
 
 export default JobsPage;
+

@@ -1,29 +1,30 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Building,
+  Building2,
   Plus,
-  Search,
   RefreshCw,
   Pencil,
   Trash2,
-  AlertTriangle,
   GraduationCap,
   Users,
-  Info,
-  CheckCircle2,
+  AlertTriangle,
+  Lock,
 } from 'lucide-react';
 import { departmentsApi } from '../api/departments';
 import { studentsApi } from '../api/students';
 import { useToast } from '../contexts/ToastContext';
 import { Card } from '../components/common/Card';
 import { MetricCard } from '../components/common/MetricCard';
+import { SearchInput } from '../components/common/SearchInput';
 import { Modal } from '../components/common/Modal';
+import { ConfirmDialog } from '../components/common/ConfirmDialog';
+import { FormInput } from '../components/forms/FormInput';
 import { SkeletonTable } from '../components/common/LoadingSkeleton';
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 
 export function DepartmentsPage() {
-  const { showToast } = useToast();
+  const { toast } = useToast();
 
   const [departments, setDepartments] = useState([]);
   const [students, setStudents] = useState([]);
@@ -41,7 +42,7 @@ export function DepartmentsPage() {
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
 
-  // Delete Confirmation Modal State
+  // Delete Confirmation Dialog State
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedDeptForDelete, setSelectedDeptForDelete] = useState(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
@@ -132,13 +133,11 @@ export function DepartmentsPage() {
     try {
       setFormSubmitting(true);
       if (editingDept) {
-        // Update existing department
         await departmentsApi.update(editingDept.departmentId, {
           departmentName: normalizedName,
         });
-        showToast(`Department "${normalizedName}" updated successfully.`, 'success');
+        toast.success(`Department "${normalizedName}" updated successfully.`);
       } else {
-        // Create new department
         const payload = {
           departmentName: normalizedName,
         };
@@ -153,7 +152,7 @@ export function DepartmentsPage() {
         }
 
         await departmentsApi.create(payload);
-        showToast(`Department "${normalizedName}" created successfully.`, 'success');
+        toast.success(`Department "${normalizedName}" created successfully.`);
       }
 
       setIsFormModalOpen(false);
@@ -165,7 +164,7 @@ export function DepartmentsPage() {
     }
   };
 
-  // Handlers for Delete Modal
+  // Handlers for Delete Dialog
   const handleOpenDeleteModal = (dept) => {
     setSelectedDeptForDelete(dept);
     setDeleteError('');
@@ -178,7 +177,7 @@ export function DepartmentsPage() {
     const count = studentCountByDept[selectedDeptForDelete.departmentId] || 0;
     if (count > 0) {
       setDeleteError(
-        `Cannot delete department "${selectedDeptForDelete.departmentName}" because it is currently assigned to ${count} student record(s). Retain this department to preserve academic history.`
+        `Cannot delete department "${selectedDeptForDelete.departmentName}" because it is currently assigned to ${count} student record(s).`
       );
       return;
     }
@@ -187,10 +186,7 @@ export function DepartmentsPage() {
       setDeleteSubmitting(true);
       setDeleteError('');
       await departmentsApi.delete(selectedDeptForDelete.departmentId);
-      showToast(
-        `Department "${selectedDeptForDelete.departmentName}" deleted successfully.`,
-        'success'
-      );
+      toast.success(`Department "${selectedDeptForDelete.departmentName}" deleted successfully.`);
       setIsDeleteModalOpen(false);
       await loadData();
     } catch (err) {
@@ -200,36 +196,22 @@ export function DepartmentsPage() {
     }
   };
 
+  const deleteEnrolledCount = selectedDeptForDelete
+    ? studentCountByDept[selectedDeptForDelete.departmentId] || 0
+    : 0;
+
   return (
     <div className="page-container">
-      {/* Header */}
-      <div className="page-header" style={{ marginBottom: '1.5rem' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.25rem' }}>
-            <div
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 36,
-                height: 36,
-                borderRadius: 'var(--radius-md)',
-                backgroundColor: 'var(--color-primary-subtle)',
-                color: 'var(--color-primary)',
-              }}
-            >
-              <Building size={20} />
-            </div>
-            <h1 className="page-title" style={{ margin: 0 }}>
-              Department Management
-            </h1>
-          </div>
-          <p className="page-subtitle" style={{ margin: 0 }}>
-            Configure and govern university academic disciplines for student eligibility and placement analytics.
+      {/* Page Header */}
+      <div className="page-header">
+        <div className="page-header-content">
+          <h1 className="page-title">Departments</h1>
+          <p className="page-subtitle">
+            Configure university academic disciplines and track student enrollment counts.
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+        <div className="page-header-actions">
           <button
             type="button"
             className="btn btn-secondary"
@@ -252,95 +234,63 @@ export function DepartmentsPage() {
         </div>
       </div>
 
-      {/* Metrics Row */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-          gap: '1rem',
-          marginBottom: '1.5rem',
-        }}
-      >
+      {/* Metrics Row (Compact variant per Quiet Ledger) */}
+      <div className="metrics-grid" style={{ marginBottom: 'var(--space-6)' }}>
         <MetricCard
-          title="Total Departments"
+          label="Total Departments"
           value={totalDepartments}
-          icon={Building}
-          variant="primary"
-          subtitle="Academic disciplines"
+          icon={Building2}
+          variant="compact"
+          context="Academic disciplines"
         />
         <MetricCard
-          title="Enrolled Students"
+          label="Enrolled Students"
           value={totalEnrolledStudents}
           icon={GraduationCap}
-          variant="success"
-          subtitle="Across all departments"
+          variant="compact"
+          context="Across all departments"
         />
         <MetricCard
-          title="Active in Roster"
+          label="Active Disciplines"
           value={activeDepartmentsCount}
           icon={Users}
-          variant="default"
-          subtitle="With registered students"
+          variant="compact"
+          context="With registered students"
         />
       </div>
 
       {/* Main Content Card */}
       <Card>
-        {/* Search & Filter Bar */}
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '1rem',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '1.25rem',
-            paddingBottom: '1.25rem',
-            borderBottom: '1px solid var(--color-border)',
-          }}
-        >
-          <div style={{ position: 'relative', flex: 1, minWidth: '240px', maxWidth: '400px' }}>
-            <Search
-              size={16}
-              style={{
-                position: 'absolute',
-                left: '0.75rem',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: 'var(--color-text-muted)',
-              }}
-            />
-            <input
-              type="text"
-              className="form-input"
-              placeholder="Search by department name or ID..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ paddingLeft: '2.25rem' }}
-            />
-          </div>
-
-          <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-            Showing <strong>{filteredDepartments.length}</strong> of <strong>{totalDepartments}</strong> departments
+        {/* FilterBar */}
+        <div className="filter-bar" style={{ marginBottom: 'var(--space-4)' }}>
+          <SearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search by department name or ID..."
+            className="filter-search"
+          />
+          <div style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+            Showing <strong style={{ color: 'var(--color-text-primary)' }}>{filteredDepartments.length}</strong> of{' '}
+            <strong style={{ color: 'var(--color-text-primary)' }}>{totalDepartments}</strong> departments
           </div>
         </div>
 
         {/* State Display: Loading, Error, Empty, or Table */}
         {loading ? (
-          <SkeletonTable rows={5} cols={5} />
+          <SkeletonTable rows={5} cols={4} />
         ) : error ? (
           <ErrorState
-            title="Failed to Load Departments"
+            title="Couldn't load departments"
             message={error}
             onRetry={loadData}
           />
         ) : filteredDepartments.length === 0 ? (
           <EmptyState
-            title="No Departments Found"
+            title={searchQuery ? 'No matching departments' : 'No departments yet'}
             message={
               searchQuery
-                ? 'No departments match your search query. Try clearing your search.'
-                : 'No academic departments have been added yet. Click "Add Department" above to create the first department.'
+                ? 'No departments match your search query. Try clearing the search.'
+                : 'No academic departments have been configured. Add the first department to register students.'
             }
             action={
               searchQuery ? (
@@ -349,7 +299,7 @@ export function DepartmentsPage() {
                   className="btn btn-secondary btn-sm"
                   onClick={() => setSearchQuery('')}
                 >
-                  Clear Search
+                  Clear search
                 </button>
               ) : (
                 <button
@@ -368,11 +318,10 @@ export function DepartmentsPage() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th style={{ width: '100px' }}>ID</th>
-                  <th>Department Name</th>
-                  <th>Associated Students</th>
-                  <th>Status</th>
-                  <th style={{ textAlign: 'right', width: '160px' }}>Actions</th>
+                  <th style={{ width: '80px' }}>ID</th>
+                  <th style={{ minWidth: '240px' }}>Department Name</th>
+                  <th className="col-numeric" style={{ width: '180px', textAlign: 'right' }}>Enrolled Students</th>
+                  <th className="col-actions" style={{ width: '160px', textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -380,77 +329,57 @@ export function DepartmentsPage() {
                   const studentCount = studentCountByDept[dept.departmentId] || 0;
                   return (
                     <tr key={dept.departmentId}>
-                      <td>
-                        <span style={{ fontWeight: 600, color: 'var(--color-text-muted)' }}>
-                          #{dept.departmentId}
-                        </span>
+                      <td style={{ width: '80px', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                        #{dept.departmentId}
                       </td>
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <Building size={16} style={{ color: 'var(--color-primary)' }} />
-                          <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>
+                      <td style={{ minWidth: '240px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                          <Building2 size={16} style={{ color: 'var(--color-primary-600)', flexShrink: 0 }} />
+                          <span style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>
                             {dept.departmentName}
                           </span>
                         </div>
                       </td>
-                      <td>
-                        <span
-                          className={`badge ${studentCount > 0 ? 'badge-info' : 'badge-neutral'}`}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.35rem',
-                            fontWeight: 600,
-                          }}
-                        >
-                          <GraduationCap size={12} />
-                          {studentCount} {studentCount === 1 ? 'Student' : 'Students'} Enrolled
+                      <td className="col-numeric" style={{ width: '180px', textAlign: 'right' }}>
+                        <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: studentCount > 0 ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>
+                          {studentCount}
+                        </span>
+                        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginLeft: 'var(--space-1)' }}>
+                          {studentCount === 1 ? 'student' : 'students'}
                         </span>
                       </td>
-                      <td>
-                        {studentCount > 0 ? (
-                          <span className="badge badge-success">
-                            <span className="badge-dot" />
-                            In Active Use
-                          </span>
-                        ) : (
-                          <span className="badge badge-neutral">
-                            <span className="badge-dot" />
-                            Unassigned
-                          </span>
-                        )}
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
-                          {/* Edit Button */}
+                      <td className="col-actions" style={{ width: '160px', textAlign: 'right' }}>
+                        <div style={{ display: 'inline-flex', gap: 'var(--space-1)', justifyContent: 'flex-end' }}>
                           <button
                             type="button"
-                            className="btn btn-secondary btn-sm"
+                            className="btn btn-ghost btn-sm"
                             onClick={() => handleOpenEditModal(dept)}
                             title="Edit department name"
-                            style={{ padding: '0.25rem 0.55rem' }}
+                            aria-label={`Edit ${dept.departmentName}`}
                           >
-                            <Pencil size={14} />
+                            <Pencil size={15} />
                             <span>Edit</span>
                           </button>
 
-                          {/* Delete Button */}
                           <button
                             type="button"
-                            className="btn btn-secondary btn-sm"
+                            className="btn btn-ghost btn-sm text-danger"
                             onClick={() => handleOpenDeleteModal(dept)}
                             title={
                               studentCount > 0
                                 ? 'Referenced by enrolled students (protected)'
                                 : 'Delete department'
                             }
-                            style={{
-                              padding: '0.25rem 0.55rem',
-                              color: studentCount > 0 ? 'var(--color-text-muted)' : 'var(--color-danger)',
-                            }}
+                            aria-label={`Delete ${dept.departmentName}`}
                           >
-                            <Trash2 size={14} />
-                            <span>Delete</span>
+                            {studentCount > 0 ? (
+                              <Lock size={15} style={{ color: 'var(--color-text-muted)' }} />
+                            ) : (
+                              <Trash2 size={15} />
+                            )}
+                            <span style={{ color: studentCount > 0 ? 'var(--color-text-muted)' : 'var(--color-danger-600)' }}>
+                              Delete
+                            </span>
                           </button>
                         </div>
                       </td>
@@ -463,88 +392,15 @@ export function DepartmentsPage() {
         )}
       </Card>
 
-      {/* ========================================================================= */}
-      {/* 1. Create / Edit Department Modal                                         */}
-      {/* ========================================================================= */}
+      {/* Create / Edit Department Modal */}
       {isFormModalOpen && (
         <Modal
           isOpen={isFormModalOpen}
           onClose={() => !formSubmitting && setIsFormModalOpen(false)}
-          title={editingDept ? 'Edit Academic Department' : 'Add Academic Department'}
-        >
-          <form onSubmit={handleFormSubmit}>
-            <div style={{ marginBottom: '1rem' }}>
-              <p style={{ margin: '0 0 1rem 0', fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
-                {editingDept
-                  ? `Update the name of department #${editingDept.departmentId}. Academic records referencing this ID will reflect the updated name.`
-                  : 'Add a new academic department to the university placement registry.'}
-              </p>
-
-              {formError && (
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    padding: '0.75rem',
-                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                    border: '1px solid var(--color-danger)',
-                    borderRadius: 'var(--radius-md)',
-                    color: 'var(--color-danger)',
-                    fontSize: '0.875rem',
-                    marginBottom: '1rem',
-                  }}
-                >
-                  <AlertTriangle size={16} style={{ flexShrink: 0 }} />
-                  <span>{formError}</span>
-                </div>
-              )}
-
-              {/* Department ID */}
-              <div className="form-group" style={{ marginBottom: '1rem' }}>
-                <label className="form-label" htmlFor="form-dept-id">
-                  Department ID {editingDept ? '(Locked)' : '(Optional)'}
-                </label>
-                <input
-                  id="form-dept-id"
-                  type="number"
-                  className="form-input"
-                  placeholder={editingDept ? '' : 'Leave empty to auto-assign ID'}
-                  value={formDeptId}
-                  onChange={(e) => setFormDeptId(e.target.value)}
-                  disabled={!!editingDept}
-                  min={1}
-                />
-                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.35rem' }}>
-                  {editingDept
-                    ? 'Primary key ID cannot be modified after creation.'
-                    : 'Leave blank to automatically calculate the next available numeric sequence ID.'}
-                </div>
-              </div>
-
-              {/* Department Name */}
-              <div className="form-group" style={{ marginBottom: '1.25rem' }}>
-                <label className="form-label" htmlFor="form-dept-name">
-                  Department Name / Discipline <span style={{ color: 'var(--color-danger)' }}>*</span>
-                </label>
-                <input
-                  id="form-dept-name"
-                  type="text"
-                  className="form-input"
-                  placeholder="e.g. Computer Science, Mechanical Engineering, ECE"
-                  value={formDeptName}
-                  onChange={(e) => setFormDeptName(e.target.value)}
-                  required
-                  maxLength={100}
-                  autoFocus
-                />
-                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.35rem' }}>
-                  Must be unique across all departments. Maximum 100 characters.
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+          title={editingDept ? 'Edit Department' : 'Add Department'}
+          size="sm"
+          footer={
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)', width: '100%' }}>
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -554,163 +410,111 @@ export function DepartmentsPage() {
                 Cancel
               </button>
               <button
-                type="submit"
+                type="button"
                 className="btn btn-primary"
+                onClick={handleFormSubmit}
                 disabled={formSubmitting}
               >
                 {formSubmitting ? (
                   <>
                     <RefreshCw size={15} className="spin" />
-                    <span>Saving...</span>
+                    <span>Saving…</span>
                   </>
                 ) : editingDept ? (
-                  <>
-                    <CheckCircle2 size={15} />
-                    <span>Update Department</span>
-                  </>
+                  <span>Update Department</span>
                 ) : (
-                  <>
-                    <Plus size={15} />
-                    <span>Create Department</span>
-                  </>
+                  <span>Create Department</span>
                 )}
               </button>
             </div>
+          }
+        >
+          <form onSubmit={handleFormSubmit}>
+            {formError && (
+              <div className="alert alert-danger" style={{ marginBottom: 'var(--space-4)' }} role="alert">
+                <AlertTriangle size={16} />
+                <span>{formError}</span>
+              </div>
+            )}
+
+            <FormInput
+              label={`Department ID ${editingDept ? '(Locked)' : '(Optional)'}`}
+              type="number"
+              placeholder={editingDept ? '' : 'Leave empty to auto-assign ID'}
+              value={formDeptId}
+              onChange={(e) => setFormDeptId(e.target.value)}
+              disabled={!!editingDept}
+              helperText={
+                editingDept
+                  ? 'Primary key ID cannot be modified after creation.'
+                  : 'Leave blank to automatically calculate the next sequence ID.'
+              }
+              min={1}
+            />
+
+            <FormInput
+              label="Department Name"
+              type="text"
+              placeholder="e.g. Computer Science, Mechanical Engineering"
+              value={formDeptName}
+              onChange={(e) => setFormDeptName(e.target.value)}
+              required
+              maxLength={100}
+              helperText="Must be unique across all departments. Maximum 100 characters."
+              autoFocus
+            />
           </form>
         </Modal>
       )}
 
-      {/* ========================================================================= */}
-      {/* 2. Delete Confirmation Modal                                              */}
-      {/* ========================================================================= */}
+      {/* Delete Confirmation Dialog */}
       {isDeleteModalOpen && selectedDeptForDelete && (
-        <Modal
+        <ConfirmDialog
           isOpen={isDeleteModalOpen}
           onClose={() => !deleteSubmitting && setIsDeleteModalOpen(false)}
-          title="Delete Academic Department"
-        >
-          <div>
-            {deleteError && (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  padding: '0.75rem',
-                  backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                  border: '1px solid var(--color-danger)',
-                  borderRadius: 'var(--radius-md)',
-                  color: 'var(--color-danger)',
-                  fontSize: '0.875rem',
-                  marginBottom: '1rem',
-                }}
-              >
-                <AlertTriangle size={16} style={{ flexShrink: 0 }} />
-                <span>{deleteError}</span>
-              </div>
-            )}
+          onConfirm={deleteEnrolledCount > 0 ? () => setIsDeleteModalOpen(false) : handleDeleteSubmit}
+          title={deleteEnrolledCount > 0 ? 'Deletion Blocked' : 'Delete this department?'}
+          type={deleteEnrolledCount > 0 ? 'warning' : 'danger'}
+          confirmLabel={deleteEnrolledCount > 0 ? 'Close' : 'Delete Department'}
+          cancelLabel={deleteEnrolledCount > 0 ? null : 'Cancel'}
+          confirmLoading={deleteSubmitting}
+          message={
+            <div>
+              {deleteError && (
+                <div className="alert alert-danger" style={{ marginBottom: 'var(--space-4)' }} role="alert">
+                  <AlertTriangle size={16} />
+                  <span>{deleteError}</span>
+                </div>
+              )}
 
-            {/* Check if students are enrolled in this department */}
-            {(studentCountByDept[selectedDeptForDelete.departmentId] || 0) > 0 ? (
-              <div>
-                <div
-                  style={{
-                    display: 'flex',
-                    gap: '0.75rem',
-                    padding: '1rem',
-                    backgroundColor: 'rgba(245, 158, 11, 0.12)',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--color-warning)',
-                    marginBottom: '1rem',
-                  }}
-                >
-                  <AlertTriangle size={24} style={{ color: 'var(--color-warning)', flexShrink: 0 }} />
-                  <div>
-                    <div style={{ fontWeight: 600, color: 'var(--color-warning)', marginBottom: '0.25rem' }}>
-                      Department in Active Use (Deletion Blocked)
-                    </div>
-                    <div style={{ fontSize: '0.875rem', lineHeight: 1.5 }}>
-                      Department <strong>"{selectedDeptForDelete.departmentName}"</strong> is currently assigned to{' '}
-                      <strong>{studentCountByDept[selectedDeptForDelete.departmentId]}</strong> student record(s).
+              {deleteEnrolledCount > 0 ? (
+                <div>
+                  <div className="alert alert-warning" style={{ marginBottom: 'var(--space-3)' }}>
+                    <AlertTriangle size={18} />
+                    <div>
+                      <strong>Department has enrolled students.</strong>
+                      <p style={{ margin: 'var(--space-1) 0 0', fontSize: 'var(--text-xs)' }}>
+                        Department <strong>"{selectedDeptForDelete.departmentName}"</strong> is currently assigned to{' '}
+                        <strong>{deleteEnrolledCount}</strong> student record(s). Retain this department to preserve academic and placement history.
+                      </p>
                     </div>
                   </div>
+                  <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)', margin: 0 }}>
+                    To delete this department, first reassign or remove all enrolled students from the roster.
+                  </p>
                 </div>
-
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '0.5rem',
-                    padding: '0.75rem',
-                    backgroundColor: 'var(--color-bg-secondary)',
-                    borderRadius: 'var(--radius-md)',
-                    fontSize: '0.85rem',
-                    color: 'var(--color-text-muted)',
-                    marginBottom: '1.25rem',
-                    lineHeight: 1.5,
-                  }}
-                >
-                  <Info size={16} style={{ color: 'var(--color-primary)', flexShrink: 0, marginTop: 2 }} />
-                  <span>
-                    <strong>Recommendation:</strong> Retain this department to preserve academic transcripts, candidate eligibility histories, and placement records. If necessary, reassign all students to another department prior to deletion.
-                  </span>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => setIsDeleteModalOpen(false)}
-                  >
-                    Close & Retain Department
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div>
-                <p style={{ margin: '0 0 1rem 0', fontSize: '0.95rem', fontWeight: 600 }}>
-                  Are you sure you want to delete department "{selectedDeptForDelete.departmentName}"?
+              ) : (
+                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)', margin: 0 }}>
+                  Are you sure you want to permanently delete <strong>"{selectedDeptForDelete.departmentName}"</strong>? This department has 0 enrolled students and cannot be undone.
                 </p>
-
-                <p style={{ margin: '0 0 1.25rem 0', fontSize: '0.875rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
-                  This department has no enrolled students. Once deleted, this academic discipline will no longer be available for student enrollment or placement statistics.
-                </p>
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => setIsDeleteModalOpen(false)}
-                    disabled={deleteSubmitting}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-danger"
-                    onClick={handleDeleteSubmit}
-                    disabled={deleteSubmitting}
-                  >
-                    {deleteSubmitting ? (
-                      <>
-                        <RefreshCw size={15} className="spin" />
-                        <span>Deleting...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Trash2 size={15} />
-                        <span>Confirm Delete</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </Modal>
+              )}
+            </div>
+          }
+        />
       )}
     </div>
   );
 }
 
 export default DepartmentsPage;
+

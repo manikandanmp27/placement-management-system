@@ -7,6 +7,11 @@ import {
   Eye,
   Archive,
   ArchiveRestore,
+  RefreshCw,
+  Mail,
+  Phone,
+  Building,
+  Calendar,
   AlertTriangle,
 } from 'lucide-react';
 
@@ -40,26 +45,22 @@ export function StudentsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [rosterFilter, setRosterFilter] = useState('active');
+  const [rosterTab, setRosterTab] = useState('active'); // 'active' | 'archived' | 'all'
 
+  // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 8;
 
+  // View Modal State
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+
+  // Create Modal State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [studentToDelete, setStudentToDelete] = useState(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const [studentToArchive, setStudentToArchive] = useState(null);
-  const [archiveActionType, setArchiveActionType] = useState('archive');
-  const [isArchiving, setIsArchiving] = useState(false);
-  const [archiveModalError, setArchiveModalError] = useState(null);
-
   const [formData, setFormData] = useState({
     studentId: '',
     name: '',
@@ -73,6 +74,7 @@ export function StudentsPage() {
   });
   const [formErrors, setFormErrors] = useState({});
 
+  // Edit Modal State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editFormData, setEditFormData] = useState({
     studentId: '',
@@ -87,14 +89,26 @@ export function StudentsPage() {
   });
   const [editFormErrors, setEditFormErrors] = useState({});
 
+  // Action Loading States
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Archive / Restore State
+  const [studentToArchive, setStudentToArchive] = useState(null);
+  const [isArchiving, setIsArchiving] = useState(false);
+
+  // Hard Delete State
+  const [studentToDelete, setStudentToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Load Data
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       const studentParams = {};
-      if (rosterFilter === 'all') {
+      if (rosterTab === 'all') {
         studentParams.includeArchived = true;
-      } else if (rosterFilter === 'archived') {
+      } else if (rosterTab === 'archived') {
         studentParams.archived = true;
       } else {
         studentParams.archived = false;
@@ -102,7 +116,7 @@ export function StudentsPage() {
 
       const [studentsData, deptsData] = await Promise.all([
         studentsApi.getAll(studentParams),
-        departmentsApi.getAll(),
+        departmentsApi.getAll().catch(() => []),
       ]);
       setStudents(Array.isArray(studentsData) ? studentsData : []);
       setDepartments(Array.isArray(deptsData) ? deptsData : []);
@@ -112,15 +126,15 @@ export function StudentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [rosterFilter]);
+  }, [rosterTab]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
+  // Filtered Students
   const filteredStudents = useMemo(() => {
     return students.filter((s) => {
-      
       const query = searchQuery.toLowerCase().trim();
       const matchesSearch =
         !query ||
@@ -140,16 +154,18 @@ export function StudentsPage() {
     });
   }, [students, searchQuery, departmentFilter, statusFilter]);
 
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, departmentFilter, statusFilter, rosterTab]);
+
   const totalPages = Math.ceil(filteredStudents.length / pageSize) || 1;
   const paginatedStudents = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
     return filteredStudents.slice(start, start + pageSize);
   }, [filteredStudents, currentPage, pageSize]);
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, departmentFilter, statusFilter, rosterFilter]);
-
+  // Handlers
   const handleViewStudent = (student) => {
     setSelectedStudent(student);
     setIsViewModalOpen(true);
@@ -157,29 +173,24 @@ export function StudentsPage() {
 
   const handleArchiveClick = (student) => {
     setStudentToArchive(student);
-    setArchiveActionType(student.isArchived ? 'unarchive' : 'archive');
-    setArchiveModalError(null);
   };
 
   const handleConfirmArchive = async () => {
     if (!studentToArchive) return;
     try {
       setIsArchiving(true);
-      setArchiveModalError(null);
-      if (archiveActionType === 'archive') {
-        await studentsApi.archive(studentToArchive.studentId);
-        toast.success(`Student ${studentToArchive.name} was successfully archived.`);
-      } else {
+      if (studentToArchive.isArchived) {
         await studentsApi.unarchive(studentToArchive.studentId);
-        toast.success(`Student ${studentToArchive.name} was successfully restored to active roster.`);
+        toast.success(`Student ${studentToArchive.name} restored to active roster.`);
+      } else {
+        await studentsApi.archive(studentToArchive.studentId);
+        toast.success(`Student ${studentToArchive.name} moved to archived records.`);
       }
       setStudentToArchive(null);
-      loadData();
+      await loadData();
     } catch (err) {
-      console.error('Failed to change student archive status:', err);
-      const errMsg = err.message || 'Failed to update student archive status.';
-      setArchiveModalError(errMsg);
-      toast.error(errMsg);
+      console.error('Failed to update student archive status:', err);
+      toast.error(err.message || 'Failed to update student archive status.');
     } finally {
       setIsArchiving(false);
     }
@@ -194,17 +205,18 @@ export function StudentsPage() {
     try {
       setIsDeleting(true);
       await studentsApi.delete(studentToDelete.studentId);
-      toast.success(`Student ${studentToDelete.name} was successfully removed.`);
+      toast.success(`Student ${studentToDelete.name} was permanently removed.`);
       setStudentToDelete(null);
-      loadData();
+      await loadData();
     } catch (err) {
       console.error('Failed to delete student:', err);
-      toast.error(err.message || 'Failed to delete student.');
+      toast.error(err.message || 'Hard delete failed: student has associated applications, interviews, or placement records. Use Archive instead.');
     } finally {
       setIsDeleting(false);
     }
   };
 
+  // Form Validation
   const validateForm = () => {
     const errors = {};
     if (!formData.studentId || isNaN(formData.studentId) || Number(formData.studentId) <= 0) {
@@ -238,7 +250,7 @@ export function StudentsPage() {
   };
 
   const handleCreateStudent = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     if (!validateForm()) return;
 
     try {
@@ -276,7 +288,7 @@ export function StudentsPage() {
         backlogs: '0',
         placementStatus: 'NOT_PLACED',
       });
-      loadData();
+      await loadData();
     } catch (err) {
       console.error('Failed to create student:', err);
       toast.error(err.message || 'Failed to create student. Please verify ID/Email uniqueness.');
@@ -331,7 +343,7 @@ export function StudentsPage() {
   };
 
   const handleUpdateStudent = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     if (!validateEditForm()) return;
 
     try {
@@ -358,7 +370,7 @@ export function StudentsPage() {
       await studentsApi.update(editFormData.studentId, payload);
       toast.success(`Student record for ${payload.name} updated successfully!`);
       setIsEditModalOpen(false);
-      loadData();
+      await loadData();
     } catch (err) {
       console.error('Failed to update student:', err);
       toast.error(err.message || 'Failed to update student record.');
@@ -368,286 +380,523 @@ export function StudentsPage() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '1rem',
-        }}
-      >
-        <div>
-          <h2 style={{ fontSize: '1.45rem', fontWeight: 700, margin: 0 }}>
-            Students Directory
-          </h2>
-          <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
-            Comprehensive directory of registered students, academic CGPA records, and placement status.
+    <div className="page-container">
+      {/* Header */}
+      <div className="page-header">
+        <div className="page-header-content">
+          <h1 className="page-title">Students</h1>
+          <p className="page-subtitle">
+            Student directory, academic CGPA records, archive lifecycle, and placement statuses.
           </p>
         </div>
 
-        <Button
-          variant="primary"
-          icon={Plus}
-          onClick={() => {
-            setFormErrors({});
-            setIsCreateModalOpen(true);
-          }}
-          id="btn-register-student"
-        >
-          Register Student
-        </Button>
+        <div className="page-header-actions">
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={loadData}
+            disabled={loading}
+            title="Refresh student records"
+          >
+            <RefreshCw size={16} className={loading ? 'spin' : ''} />
+            <span>Refresh</span>
+          </button>
+
+          {canManage && (
+            <Button
+              variant="primary"
+              icon={Plus}
+              onClick={() => {
+                setFormErrors({});
+                setIsCreateModalOpen(true);
+              }}
+              id="btn-register-student"
+            >
+              Register Student
+            </Button>
+          )}
+        </div>
       </div>
 
+      {/* Roster Tabs with Counts */}
       <div
-        className="card"
         style={{
-          padding: '1rem',
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '0.85rem',
+          gap: 'var(--space-2)',
+          borderBottom: '1px solid var(--color-border)',
+          overflowX: 'auto',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap', flex: 1 }}>
-          <SearchInput
-            value={searchQuery}
-            onChange={setSearchQuery}
-            placeholder="Search by name, email, or ID..."
-            id="student-search-input"
-          />
-
-          <div style={{ minWidth: 200 }}>
-            <select
-              className="form-select"
-              value={departmentFilter}
-              onChange={(e) => setDepartmentFilter(e.target.value)}
-              aria-label="Filter by department"
+        <button
+          type="button"
+          onClick={() => setRosterTab('active')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--space-2)',
+            padding: 'var(--space-3) var(--space-4)',
+            fontSize: 'var(--text-sm)',
+            fontWeight: 600,
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            color: rosterTab === 'active' ? 'var(--color-primary-600)' : 'var(--color-text-secondary)',
+            borderBottom: rosterTab === 'active' ? '2px solid var(--color-primary-600)' : '2px solid transparent',
+            marginBottom: '-1px',
+            whiteSpace: 'nowrap',
+            transition: 'all var(--duration-fast)',
+          }}
+        >
+          <span>Active Roster</span>
+          {rosterTab === 'active' && (
+            <span
+              style={{
+                padding: '1px 8px',
+                borderRadius: 'var(--radius-full)',
+                fontSize: 'var(--text-xs)',
+                fontWeight: 700,
+                fontVariantNumeric: 'tabular-nums',
+                backgroundColor: 'var(--color-primary-100)',
+                color: 'var(--color-primary-700)',
+              }}
             >
-              <option value="">All Departments</option>
-              {departments.map((d) => (
-                <option key={d.departmentId} value={d.departmentId}>
-                  {d.departmentName}
-                </option>
-              ))}
-            </select>
-          </div>
+              {filteredStudents.length}
+            </span>
+          )}
+        </button>
 
-          <div style={{ minWidth: 160 }}>
-            <select
-              className="form-select"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              aria-label="Filter by placement status"
+        <button
+          type="button"
+          onClick={() => setRosterTab('archived')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--space-2)',
+            padding: 'var(--space-3) var(--space-4)',
+            fontSize: 'var(--text-sm)',
+            fontWeight: 600,
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            color: rosterTab === 'archived' ? 'var(--color-primary-600)' : 'var(--color-text-secondary)',
+            borderBottom: rosterTab === 'archived' ? '2px solid var(--color-primary-600)' : '2px solid transparent',
+            marginBottom: '-1px',
+            whiteSpace: 'nowrap',
+            transition: 'all var(--duration-fast)',
+          }}
+        >
+          <span>Archived Records</span>
+          {rosterTab === 'archived' && (
+            <span
+              style={{
+                padding: '1px 8px',
+                borderRadius: 'var(--radius-full)',
+                fontSize: 'var(--text-xs)',
+                fontWeight: 700,
+                fontVariantNumeric: 'tabular-nums',
+                backgroundColor: 'var(--color-primary-100)',
+                color: 'var(--color-primary-700)',
+              }}
             >
-              <option value="">All Statuses</option>
-              <option value="PLACED">Placed</option>
-              <option value="NOT_PLACED">Not Placed</option>
-            </select>
-          </div>
+              {filteredStudents.length}
+            </span>
+          )}
+        </button>
 
-          <div style={{ minWidth: 160 }}>
-            <select
-              className="form-select"
-              value={rosterFilter}
-              onChange={(e) => setRosterFilter(e.target.value)}
-              aria-label="Filter by archive status"
-              id="student-roster-filter"
+        <button
+          type="button"
+          onClick={() => setRosterTab('all')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--space-2)',
+            padding: 'var(--space-3) var(--space-4)',
+            fontSize: 'var(--text-sm)',
+            fontWeight: 600,
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            color: rosterTab === 'all' ? 'var(--color-primary-600)' : 'var(--color-text-secondary)',
+            borderBottom: rosterTab === 'all' ? '2px solid var(--color-primary-600)' : '2px solid transparent',
+            marginBottom: '-1px',
+            whiteSpace: 'nowrap',
+            transition: 'all var(--duration-fast)',
+          }}
+        >
+          <span>All Students</span>
+          {rosterTab === 'all' && (
+            <span
+              style={{
+                padding: '1px 8px',
+                borderRadius: 'var(--radius-full)',
+                fontSize: 'var(--text-xs)',
+                fontWeight: 700,
+                fontVariantNumeric: 'tabular-nums',
+                backgroundColor: 'var(--color-primary-100)',
+                color: 'var(--color-primary-700)',
+              }}
             >
-              <option value="active">Active Students</option>
-              <option value="archived">Archived Students</option>
-              <option value="all">All Students</option>
-            </select>
-          </div>
-        </div>
-
-        <div style={{ fontSize: '0.825rem', color: 'var(--color-text-secondary)' }}>
-          Total Students: <strong>{filteredStudents.length}</strong>
-        </div>
+              {filteredStudents.length}
+            </span>
+          )}
+        </button>
       </div>
 
-      {loading ? (
-        <SkeletonTable rows={6} cols={7} />
-      ) : error ? (
-        <ErrorState message={error} onRetry={loadData} />
-      ) : filteredStudents.length === 0 ? (
-        <EmptyState
-          icon={GraduationCap}
-          title="No Students Found"
-          description={
-            searchQuery || departmentFilter || statusFilter
-              ? 'No students match your filter criteria. Try resetting the filters.'
-              : 'There are currently no students registered in the system.'
-          }
-          actionText="Register Student"
-          actionIcon={Plus}
-          onAction={() => setIsCreateModalOpen(true)}
-        />
-      ) : (
-        <div className="card" style={{ overflow: 'hidden' }}>
-          <div className="table-container" style={{ border: 'none', borderRadius: 0 }}>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Student Name</th>
-                  <th>Department</th>
-                  <th>Grad Year</th>
-                  <th>CGPA</th>
-                  <th>Backlogs</th>
-                  <th>Status</th>
-                  <th style={{ textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedStudents.map((student) => (
-                  <tr key={student.studentId}>
-                    <td style={{ fontWeight: 600, color: 'var(--color-text-muted)' }}>
-                      #{student.studentId}
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                        <span style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                          {student.name}
-                        </span>
-                        {student.isArchived && (
-                          <span
-                            style={{
-                              fontSize: '0.65rem',
-                              fontWeight: 700,
-                              textTransform: 'uppercase',
-                              letterSpacing: '0.04em',
-                              padding: '0.1rem 0.35rem',
-                              borderRadius: 'var(--radius-sm)',
-                              backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                              color: 'var(--color-danger, #ef4444)',
-                              border: '1px solid rgba(239, 68, 68, 0.25)',
-                            }}
-                          >
-                            Archived
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                        {student.email}
-                      </div>
-                    </td>
-                    <td>
-                      <span style={{ fontSize: '0.85rem' }}>
-                        {student.department?.departmentName || '—'}
-                      </span>
-                    </td>
-                    <td>{student.graduationYear}</td>
-                    <td>
-                      <span
-                        style={{
-                          fontWeight: 700,
-                          color:
-                            student.cgpa >= 8.5
-                              ? 'var(--color-success)'
-                              : student.cgpa >= 7.0
-                              ? 'var(--color-primary)'
-                              : 'var(--color-warning)',
-                        }}
-                      >
-                        {Number(student.cgpa).toFixed(2)}
-                      </span>
-                    </td>
-                    <td>
-                      {student.backlogs === 0 ? (
-                        <span style={{ color: 'var(--color-success)', fontWeight: 500 }}>0</span>
-                      ) : (
-                        <span style={{ color: 'var(--color-danger)', fontWeight: 600 }}>
-                          {student.backlogs}
-                        </span>
-                      )}
-                    </td>
-                    <td>
-                      <StatusBadge status={student.placementStatus} />
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
-                        <button
-                          type="button"
-                          className="icon-btn icon-btn-sm"
-                          onClick={() => handleViewStudent(student)}
-                          aria-label={`View details of ${student.name}`}
-                          title="View Details"
-                          id={`btn-view-student-${student.studentId}`}
-                        >
-                          <Eye size={15} />
-                        </button>
-                        {canManage && (
-                          <>
-                            <button
-                              type="button"
-                              className="icon-btn icon-btn-sm"
-                              onClick={() => handleEditClick(student)}
-                              aria-label={`Edit details of ${student.name}`}
-                              title="Edit Student"
-                              id={`btn-edit-student-${student.studentId}`}
-                            >
-                              <Pencil size={15} />
-                            </button>
-                            {student.isArchived ? (
-                              <button
-                                type="button"
-                                className="icon-btn icon-btn-sm"
-                                onClick={() => handleArchiveClick(student)}
-                                aria-label={`Restore student ${student.name}`}
-                                title="Restore Student"
-                                id={`btn-restore-student-${student.studentId}`}
-                                style={{ color: 'var(--color-primary)' }}
-                              >
-                                <ArchiveRestore size={15} />
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                className="icon-btn icon-btn-sm"
-                                onClick={() => handleArchiveClick(student)}
-                                aria-label={`Archive student ${student.name}`}
-                                title="Archive Student"
-                                id={`btn-archive-student-${student.studentId}`}
-                                style={{ color: 'var(--color-warning, #f59e0b)' }}
-                              >
-                                <Archive size={15} />
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              className="icon-btn icon-btn-sm"
-                              onClick={() => handleDeleteClick(student)}
-                              aria-label={`Delete student ${student.name}`}
-                              title="Delete Student"
-                              style={{ color: 'var(--color-danger)' }}
-                              id={`btn-delete-student-${student.studentId}`}
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
+      {/* Main Content Card */}
+      <div className="card">
+        {/* FilterBar */}
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 'var(--space-3)',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: 'var(--space-4)',
+            borderBottom: '1px solid var(--color-border)',
+          }}
+        >
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', flex: 1, minWidth: '260px' }}>
+            <div style={{ flex: 1, minWidth: '220px', maxWidth: '380px' }}>
+              <SearchInput
+                value={searchQuery}
+                onChange={setSearchQuery}
+                placeholder="Search by name, email, or ID..."
+                id="student-search-input"
+              />
+            </div>
+
+            <div style={{ minWidth: '180px' }}>
+              <select
+                className="form-select"
+                value={departmentFilter}
+                onChange={(e) => setDepartmentFilter(e.target.value)}
+                aria-label="Filter by department"
+                id="student-dept-filter"
+              >
+                <option value="">All Departments</option>
+                {departments.map((d) => (
+                  <option key={d.departmentId} value={d.departmentId}>
+                    {d.departmentName}
+                  </option>
                 ))}
-              </tbody>
-            </table>
+              </select>
+            </div>
+
+            <div style={{ minWidth: '150px' }}>
+              <select
+                className="form-select"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                aria-label="Filter by placement status"
+                id="student-status-filter"
+              >
+                <option value="">All Statuses</option>
+                <option value="PLACED">Placed</option>
+                <option value="NOT_PLACED">Not Placed</option>
+              </select>
+            </div>
           </div>
 
-          <Pagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            totalItems={filteredStudents.length}
-            pageSize={pageSize}
-            onPageChange={setCurrentPage}
-          />
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+            Showing <strong style={{ color: 'var(--color-text-primary)' }}>{filteredStudents.length}</strong> students
+          </div>
         </div>
-      )}
 
+        {/* State Views */}
+        {loading ? (
+          <SkeletonTable rows={6} cols={6} />
+        ) : error ? (
+          <ErrorState message={error} onRetry={loadData} />
+        ) : filteredStudents.length === 0 ? (
+          <EmptyState
+            icon={GraduationCap}
+            title={
+              rosterTab === 'archived'
+                ? 'No Archived Students'
+                : searchQuery || departmentFilter || statusFilter
+                ? 'No Matching Students'
+                : 'No Students Registered'
+            }
+            description={
+              rosterTab === 'archived'
+                ? 'There are currently no deactivated or archived students in the system.'
+                : searchQuery || departmentFilter || statusFilter
+                ? 'No students match your filter criteria. Try clearing filters.'
+                : 'There are currently no students registered in the system.'
+            }
+            actionText={
+              searchQuery || departmentFilter || statusFilter
+                ? 'Clear Filters'
+                : canManage && rosterTab !== 'archived'
+                ? 'Register Student'
+                : undefined
+            }
+            actionIcon={searchQuery || departmentFilter || statusFilter ? undefined : Plus}
+            onAction={
+              searchQuery || departmentFilter || statusFilter
+                ? () => {
+                    setSearchQuery('');
+                    setDepartmentFilter('');
+                    setStatusFilter('');
+                  }
+                : canManage && rosterTab !== 'archived'
+                ? () => setIsCreateModalOpen(true)
+                : undefined
+            }
+          />
+        ) : (
+          <>
+            {/* Desktop Table View (6 Visible Columns per spec 5.5) */}
+            <div className="table-responsive">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th style={{ minWidth: '220px' }}>Student</th>
+                    <th style={{ width: '160px' }}>Department</th>
+                    <th className="col-numeric" style={{ textAlign: 'right', width: '90px' }}>CGPA</th>
+                    <th className="col-numeric" style={{ textAlign: 'right', width: '90px' }}>Backlogs</th>
+                    <th className="col-status" style={{ width: '140px', textAlign: 'center' }}>Placement Status</th>
+                    <th className="col-actions" style={{ textAlign: 'right', width: canManage ? '160px' : '90px' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedStudents.map((student) => (
+                    <tr key={student.studentId}>
+                      {/* 1. Student */}
+                      <td style={{ minWidth: '220px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                          <span style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                            {student.name}
+                          </span>
+                          {student.isArchived && (
+                            <span
+                              style={{
+                                fontSize: '10px',
+                                fontWeight: 700,
+                                textTransform: 'uppercase',
+                                padding: '1px 6px',
+                                borderRadius: 'var(--radius-sm)',
+                                backgroundColor: 'var(--color-warning-bg)',
+                                color: 'var(--color-warning-text)',
+                                border: '1px solid var(--color-warning-border)',
+                              }}
+                            >
+                              Archived
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>
+                          ID: #{student.studentId}
+                        </div>
+                      </td>
+
+                      {/* 2. Department */}
+                      <td style={{ width: '160px' }}>
+                        <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>
+                          {student.department?.departmentName || '—'}
+                        </span>
+                      </td>
+
+                      {/* 3. CGPA (right, tabular) */}
+                      <td className="col-numeric" style={{ width: '90px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                        {student.cgpa != null ? Number(student.cgpa).toFixed(2) : '—'}
+                      </td>
+
+                      {/* 4. Backlogs (right, danger if > 0) */}
+                      <td className="col-numeric" style={{ width: '90px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                        {student.backlogs > 0 ? (
+                          <span style={{ color: 'var(--color-danger)', fontWeight: 600 }}>
+                            {student.backlogs}
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--color-text-muted)' }}>0</span>
+                        )}
+                      </td>
+
+                      {/* 5. Placement Status */}
+                      <td className="col-status" style={{ width: '140px', textAlign: 'center' }}>
+                        <StatusBadge status={student.placementStatus} />
+                      </td>
+
+                      {/* 6. Actions */}
+                      <td className="col-actions" style={{ width: canManage ? '160px' : '90px', textAlign: 'right' }}>
+                        <div style={{ display: 'inline-flex', gap: 'var(--space-1)', justifyContent: 'flex-end' }}>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => handleViewStudent(student)}
+                            aria-label={`View details of ${student.name}`}
+                            title="View Student Profile"
+                            id={`btn-view-student-${student.studentId}`}
+                          >
+                            <Eye size={15} />
+                          </button>
+
+                          {canManage && (
+                            <>
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm"
+                                onClick={() => handleEditClick(student)}
+                                aria-label={`Edit ${student.name}`}
+                                title="Edit Record"
+                                id={`btn-edit-student-${student.studentId}`}
+                              >
+                                <Pencil size={15} />
+                              </button>
+
+                              {student.isArchived ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-sm"
+                                  onClick={() => handleArchiveClick(student)}
+                                  aria-label={`Restore student ${student.name}`}
+                                  title="Restore Student"
+                                  id={`btn-restore-student-${student.studentId}`}
+                                >
+                                  <ArchiveRestore size={15} />
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-sm"
+                                  onClick={() => handleArchiveClick(student)}
+                                  aria-label={`Archive student ${student.name}`}
+                                  title="Archive Student"
+                                  id={`btn-archive-student-${student.studentId}`}
+                                >
+                                  <Archive size={15} />
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm text-danger"
+                                onClick={() => handleDeleteClick(student)}
+                                aria-label={`Delete student ${student.name}`}
+                                title="Delete Record"
+                                id={`btn-delete-student-${student.studentId}`}
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Data Cards View (<768px) */}
+            <div className="data-card-list" style={{ padding: 'var(--space-4)' }}>
+              {paginatedStudents.map((student) => (
+                <div key={student.studentId} className="data-card">
+                  <div className="data-card-header">
+                    <div>
+                      <div className="data-card-title">{student.name}</div>
+                      <div className="data-card-subtitle">
+                        {student.department?.departmentName || 'No Department'} • <span style={{ fontFamily: 'var(--font-mono)' }}>#{student.studentId}</span>
+                      </div>
+                    </div>
+                    <div className="data-card-badge">
+                      <StatusBadge status={student.placementStatus} />
+                    </div>
+                  </div>
+
+                  <div className="data-card-grid">
+                    <div className="data-card-field">
+                      <div className="data-card-field-label">CGPA</div>
+                      <div className="data-card-field-value" style={{ fontWeight: 600 }}>
+                        {student.cgpa != null ? Number(student.cgpa).toFixed(2) : '—'}
+                      </div>
+                    </div>
+
+                    <div className="data-card-field">
+                      <div className="data-card-field-label">Active Backlogs</div>
+                      <div className="data-card-field-value">
+                        {student.backlogs > 0 ? (
+                          <span style={{ color: 'var(--color-danger)', fontWeight: 600 }}>{student.backlogs}</span>
+                        ) : (
+                          '0'
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="data-card-field">
+                      <div className="data-card-field-label">Graduation Class</div>
+                      <div className="data-card-field-value">{student.graduationYear || '—'}</div>
+                    </div>
+
+                    <div className="data-card-field">
+                      <div className="data-card-field-label">Roster Status</div>
+                      <div className="data-card-field-value">
+                        {student.isArchived ? (
+                          <span style={{ color: 'var(--color-warning)', fontWeight: 600 }}>Archived</span>
+                        ) : (
+                          <span style={{ color: 'var(--color-success)', fontWeight: 500 }}>Active</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="data-card-footer">
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>
+                      #{student.studentId}
+                    </span>
+
+                    <div style={{ display: 'inline-flex', gap: 'var(--space-1)' }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => handleViewStudent(student)}
+                      >
+                        <Eye size={14} />
+                        <span>View</span>
+                      </button>
+
+                      {canManage && (
+                        <>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => handleEditClick(student)}
+                          >
+                            <Pencil size={14} />
+                          </button>
+
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm text-danger"
+                            onClick={() => handleDeleteClick(student)}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Pagination */}
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={filteredStudents.length}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+            />
+          </>
+        )}
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 1. View Student Modal (Definition Grid)                                  */}
+      {/* ========================================================================= */}
       <Modal
         isOpen={isViewModalOpen}
         onClose={() => setIsViewModalOpen(false)}
@@ -659,41 +908,46 @@ export function StudentsPage() {
         }
       >
         {selectedStudent && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+            {/* Header info */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
               <div
                 style={{
                   width: '3.5rem',
                   height: '3.5rem',
-                  borderRadius: '50%',
-                  backgroundColor: 'var(--color-primary-subtle)',
-                  color: 'var(--color-primary)',
+                  borderRadius: 'var(--radius-full)',
+                  backgroundColor: 'var(--color-primary-100)',
+                  color: 'var(--color-primary-700)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontWeight: 700,
-                  fontSize: '1.25rem',
+                  fontSize: 'var(--text-xl)',
+                  flexShrink: 0,
                 }}
               >
-                {selectedStudent.name.charAt(0)}
+                {selectedStudent.name?.charAt(0) || 'S'}
               </div>
               <div>
-                <h3 style={{ margin: 0, fontSize: '1.15rem' }}>{selectedStudent.name}</h3>
-                <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                <h3 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                  {selectedStudent.name}
+                </h3>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)', marginTop: '2px' }}>
                   Student ID: #{selectedStudent.studentId}
-                </span>
-                <div style={{ marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                </div>
+                <div style={{ marginTop: 'var(--space-2)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                   <StatusBadge status={selectedStudent.placementStatus} />
                   {selectedStudent.isArchived && (
                     <span
                       style={{
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        padding: '0.15rem 0.5rem',
+                        fontSize: '10px',
+                        fontWeight: 700,
+                        textTransform: 'uppercase',
+                        padding: '1px 6px',
                         borderRadius: 'var(--radius-sm)',
-                        backgroundColor: 'rgba(239, 68, 68, 0.12)',
-                        color: 'var(--color-danger, #ef4444)',
-                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        backgroundColor: 'var(--color-warning-bg)',
+                        color: 'var(--color-warning-text)',
+                        border: '1px solid var(--color-warning-border)',
                       }}
                     >
                       Archived Account
@@ -703,70 +957,73 @@ export function StudentsPage() {
               </div>
             </div>
 
+            {/* Read-Only Definition Grid */}
             <div
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(2, 1fr)',
-                gap: '1rem',
+                gap: 'var(--space-3)',
                 backgroundColor: 'var(--color-surface-hover)',
-                padding: '1rem',
+                padding: 'var(--space-4)',
                 borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-border)',
               }}
             >
               <div>
-                <div style={{ fontSize: '0.725rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
                   Email Address
                 </div>
-                <div style={{ fontSize: '0.875rem', fontWeight: 500, marginTop: '2px', wordBreak: 'break-all' }}>
+                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500, marginTop: '2px', wordBreak: 'break-all' }}>
                   {selectedStudent.email}
                 </div>
               </div>
 
               <div>
-                <div style={{ fontSize: '0.725rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
                   Phone Number
                 </div>
-                <div style={{ fontSize: '0.875rem', fontWeight: 500, marginTop: '2px' }}>
+                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500, marginTop: '2px' }}>
                   {selectedStudent.phone || 'Not specified'}
                 </div>
               </div>
 
               <div>
-                <div style={{ fontSize: '0.725rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
                   Department
                 </div>
-                <div style={{ fontSize: '0.875rem', fontWeight: 500, marginTop: '2px' }}>
+                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500, marginTop: '2px' }}>
                   {selectedStudent.department?.departmentName || '—'}
                 </div>
               </div>
 
               <div>
-                <div style={{ fontSize: '0.725rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
                   Graduation Year
                 </div>
-                <div style={{ fontSize: '0.875rem', fontWeight: 500, marginTop: '2px' }}>
+                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500, marginTop: '2px' }}>
                   {selectedStudent.graduationYear}
                 </div>
               </div>
 
               <div>
-                <div style={{ fontSize: '0.725rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
-                  CGPA
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
+                  Academic CGPA
                 </div>
-                <div style={{ fontSize: '1.1rem', fontWeight: 700, marginTop: '2px', color: 'var(--color-primary)' }}>
+                <div style={{ fontSize: 'var(--text-base)', fontWeight: 700, marginTop: '2px', color: 'var(--color-primary-600)', fontVariantNumeric: 'tabular-nums' }}>
                   {Number(selectedStudent.cgpa).toFixed(2)} / 10.0
                 </div>
               </div>
 
               <div>
-                <div style={{ fontSize: '0.725rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
                   Active Backlogs
                 </div>
                 <div
                   style={{
-                    fontSize: '1rem',
-                    fontWeight: 600,
+                    fontSize: 'var(--text-base)',
+                    fontWeight: 700,
                     marginTop: '2px',
+                    fontVariantNumeric: 'tabular-nums',
                     color: selectedStudent.backlogs > 0 ? 'var(--color-danger)' : 'var(--color-success)',
                   }}
                 >
@@ -778,6 +1035,9 @@ export function StudentsPage() {
         )}
       </Modal>
 
+      {/* ========================================================================= */}
+      {/* 2. Register New Student Modal (Grouped Layout)                            */}
+      {/* ========================================================================= */}
       <Modal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
@@ -804,113 +1064,139 @@ export function StudentsPage() {
         }
       >
         <form onSubmit={handleCreateStudent}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
-            <FormInput
-              label="Student ID"
-              name="studentId"
-              type="number"
-              value={formData.studentId}
-              onChange={(e) => setFormData({ ...formData, studentId: e.target.value })}
-              placeholder="e.g. 111"
-              required
-              error={formErrors.studentId}
-              helpText="Unique numeric student identification"
-            />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+            {/* Identity Group */}
+            <div>
+              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-text-muted)', letterSpacing: '0.04em', marginBottom: 'var(--space-2)' }}>
+                Identity & Placement
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-3)' }}>
+                <FormInput
+                  label="Student ID"
+                  name="studentId"
+                  type="number"
+                  value={formData.studentId}
+                  onChange={(e) => setFormData({ ...formData, studentId: e.target.value })}
+                  placeholder="e.g. 111"
+                  required
+                  error={formErrors.studentId}
+                  helpText="Unique positive numeric student identifier"
+                />
 
-            <FormInput
-              label="Full Name"
-              name="name"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="e.g. Priya Sharma"
-              required
-              error={formErrors.name}
-            />
+                <FormInput
+                  label="Full Name"
+                  name="name"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="e.g. Priya Sharma"
+                  required
+                  error={formErrors.name}
+                />
 
-            <FormInput
-              label="Email Address"
-              name="email"
-              type="email"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              placeholder="priya@example.com"
-              required
-              error={formErrors.email}
-            />
+                <FormSelect
+                  label="Placement Status"
+                  name="placementStatus"
+                  value={formData.placementStatus}
+                  onChange={(e) => setFormData({ ...formData, placementStatus: e.target.value })}
+                  options={[
+                    { value: 'NOT_PLACED', label: 'NOT_PLACED' },
+                    { value: 'PLACED', label: 'PLACED' },
+                  ]}
+                  required
+                />
+              </div>
+            </div>
 
-            <FormInput
-              label="Phone Number"
-              name="phone"
-              value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              placeholder="e.g. 9876543210"
-            />
+            {/* Academic Group */}
+            <div>
+              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-text-muted)', letterSpacing: '0.04em', marginBottom: 'var(--space-2)' }}>
+                Academic Details
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-3)' }}>
+                <FormSelect
+                  label="Academic Department"
+                  name="departmentId"
+                  value={formData.departmentId}
+                  onChange={(e) => setFormData({ ...formData, departmentId: e.target.value })}
+                  options={departments.map((d) => ({
+                    value: d.departmentId,
+                    label: d.departmentName,
+                  }))}
+                  required
+                  error={formErrors.departmentId}
+                />
 
-            <FormSelect
-              label="Academic Department"
-              name="departmentId"
-              value={formData.departmentId}
-              onChange={(e) => setFormData({ ...formData, departmentId: e.target.value })}
-              options={departments.map((d) => ({
-                value: d.departmentId,
-                label: d.departmentName,
-              }))}
-              required
-              error={formErrors.departmentId}
-            />
+                <FormInput
+                  label="Graduation Year"
+                  name="graduationYear"
+                  type="number"
+                  value={formData.graduationYear}
+                  onChange={(e) => setFormData({ ...formData, graduationYear: e.target.value })}
+                  required
+                  error={formErrors.graduationYear}
+                />
 
-            <FormInput
-              label="Graduation Year"
-              name="graduationYear"
-              type="number"
-              value={formData.graduationYear}
-              onChange={(e) => setFormData({ ...formData, graduationYear: e.target.value })}
-              required
-              error={formErrors.graduationYear}
-            />
+                <FormInput
+                  label="CGPA"
+                  name="cgpa"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="10"
+                  value={formData.cgpa}
+                  onChange={(e) => setFormData({ ...formData, cgpa: e.target.value })}
+                  placeholder="e.g. 8.75"
+                  required
+                  error={formErrors.cgpa}
+                  helpText="Scale of 0.00 to 10.00"
+                />
 
-            <FormInput
-              label="CGPA"
-              name="cgpa"
-              type="number"
-              step="0.01"
-              min="0"
-              max="10"
-              value={formData.cgpa}
-              onChange={(e) => setFormData({ ...formData, cgpa: e.target.value })}
-              placeholder="e.g. 8.75"
-              required
-              error={formErrors.cgpa}
-              helpText="Scale of 0.00 to 10.00"
-            />
+                <FormInput
+                  label="Active Backlogs"
+                  name="backlogs"
+                  type="number"
+                  min="0"
+                  value={formData.backlogs}
+                  onChange={(e) => setFormData({ ...formData, backlogs: e.target.value })}
+                  required
+                  error={formErrors.backlogs}
+                />
+              </div>
+            </div>
 
-            <FormInput
-              label="Backlogs"
-              name="backlogs"
-              type="number"
-              min="0"
-              value={formData.backlogs}
-              onChange={(e) => setFormData({ ...formData, backlogs: e.target.value })}
-              required
-              error={formErrors.backlogs}
-            />
+            {/* Contact Group */}
+            <div>
+              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-text-muted)', letterSpacing: '0.04em', marginBottom: 'var(--space-2)' }}>
+                Contact Information
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-3)' }}>
+                <FormInput
+                  label="Email Address"
+                  name="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  placeholder="student@university.edu"
+                  required
+                  error={formErrors.email}
+                />
 
-            <FormSelect
-              label="Placement Status"
-              name="placementStatus"
-              value={formData.placementStatus}
-              onChange={(e) => setFormData({ ...formData, placementStatus: e.target.value })}
-              options={[
-                { value: 'NOT_PLACED', label: 'NOT_PLACED' },
-                { value: 'PLACED', label: 'PLACED' },
-              ]}
-              required
-            />
+                <FormInput
+                  label="Phone Number"
+                  name="phone"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  placeholder="e.g. 9876543210"
+                />
+              </div>
+            </div>
           </div>
         </form>
       </Modal>
 
-      {/* Edit Student Record Modal */}
+      {/* ========================================================================= */}
+      {/* 3. Edit Student Modal (Grouped Layout)                                    */}
+      {/* ========================================================================= */}
       <Modal
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
@@ -937,227 +1223,164 @@ export function StudentsPage() {
         }
       >
         <form onSubmit={handleUpdateStudent}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
-            <FormInput
-              label="Student ID"
-              name="studentId"
-              type="number"
-              value={editFormData.studentId}
-              disabled
-              helpText="Student ID is permanent and cannot be modified"
-            />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+            {/* Identity Group */}
+            <div>
+              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-text-muted)', letterSpacing: '0.04em', marginBottom: 'var(--space-2)' }}>
+                Identity & Placement
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-3)' }}>
+                <FormInput
+                  label="Student ID"
+                  name="studentId"
+                  type="number"
+                  value={editFormData.studentId}
+                  disabled
+                  helpText="Student ID is permanent and cannot be modified"
+                />
 
-            <FormInput
-              label="Full Name"
-              name="name"
-              value={editFormData.name}
-              onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
-              placeholder="e.g. Priya Sharma"
-              required
-              error={editFormErrors.name}
-            />
+                <FormInput
+                  label="Full Name"
+                  name="name"
+                  value={editFormData.name}
+                  onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                  placeholder="e.g. Priya Sharma"
+                  required
+                  error={editFormErrors.name}
+                />
 
-            <FormInput
-              label="Email Address"
-              name="email"
-              type="email"
-              value={editFormData.email}
-              onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
-              placeholder="priya@example.com"
-              required
-              error={editFormErrors.email}
-            />
+                <FormSelect
+                  label="Placement Status"
+                  name="placementStatus"
+                  value={editFormData.placementStatus}
+                  onChange={(e) => setEditFormData({ ...editFormData, placementStatus: e.target.value })}
+                  options={[
+                    { value: 'NOT_PLACED', label: 'NOT_PLACED' },
+                    { value: 'PLACED', label: 'PLACED' },
+                  ]}
+                  required
+                />
+              </div>
+            </div>
 
-            <FormInput
-              label="Phone Number"
-              name="phone"
-              value={editFormData.phone}
-              onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
-              placeholder="e.g. 9876543210"
-            />
+            {/* Academic Group */}
+            <div>
+              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-text-muted)', letterSpacing: '0.04em', marginBottom: 'var(--space-2)' }}>
+                Academic Details
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-3)' }}>
+                <FormSelect
+                  label="Academic Department"
+                  name="departmentId"
+                  value={editFormData.departmentId}
+                  onChange={(e) => setEditFormData({ ...editFormData, departmentId: e.target.value })}
+                  options={departments.map((d) => ({
+                    value: d.departmentId,
+                    label: d.departmentName,
+                  }))}
+                  required
+                  error={editFormErrors.departmentId}
+                />
 
-            <FormSelect
-              label="Academic Department"
-              name="departmentId"
-              value={editFormData.departmentId}
-              onChange={(e) => setEditFormData({ ...editFormData, departmentId: e.target.value })}
-              options={departments.map((d) => ({
-                value: d.departmentId,
-                label: d.departmentName,
-              }))}
-              required
-              error={editFormErrors.departmentId}
-            />
+                <FormInput
+                  label="Graduation Year"
+                  name="graduationYear"
+                  type="number"
+                  value={editFormData.graduationYear}
+                  onChange={(e) => setEditFormData({ ...editFormData, graduationYear: e.target.value })}
+                  required
+                  error={editFormErrors.graduationYear}
+                />
 
-            <FormInput
-              label="Graduation Year"
-              name="graduationYear"
-              type="number"
-              value={editFormData.graduationYear}
-              onChange={(e) => setEditFormData({ ...editFormData, graduationYear: e.target.value })}
-              required
-              error={editFormErrors.graduationYear}
-            />
+                <FormInput
+                  label="CGPA"
+                  name="cgpa"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="10"
+                  value={editFormData.cgpa}
+                  onChange={(e) => setEditFormData({ ...editFormData, cgpa: e.target.value })}
+                  placeholder="e.g. 8.75"
+                  required
+                  error={editFormErrors.cgpa}
+                  helpText="Scale of 0.00 to 10.00"
+                />
 
-            <FormInput
-              label="CGPA"
-              name="cgpa"
-              type="number"
-              step="0.01"
-              min="0"
-              max="10"
-              value={editFormData.cgpa}
-              onChange={(e) => setEditFormData({ ...editFormData, cgpa: e.target.value })}
-              placeholder="e.g. 8.75"
-              required
-              error={editFormErrors.cgpa}
-              helpText="Scale of 0.00 to 10.00"
-            />
+                <FormInput
+                  label="Active Backlogs"
+                  name="backlogs"
+                  type="number"
+                  min="0"
+                  value={editFormData.backlogs}
+                  onChange={(e) => setEditFormData({ ...editFormData, backlogs: e.target.value })}
+                  required
+                  error={editFormErrors.backlogs}
+                />
+              </div>
+            </div>
 
-            <FormInput
-              label="Backlogs"
-              name="backlogs"
-              type="number"
-              min="0"
-              value={editFormData.backlogs}
-              onChange={(e) => setEditFormData({ ...editFormData, backlogs: e.target.value })}
-              required
-              error={editFormErrors.backlogs}
-            />
+            {/* Contact Group */}
+            <div>
+              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-text-muted)', letterSpacing: '0.04em', marginBottom: 'var(--space-2)' }}>
+                Contact Information
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-3)' }}>
+                <FormInput
+                  label="Email Address"
+                  name="email"
+                  type="email"
+                  value={editFormData.email}
+                  onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+                  placeholder="student@university.edu"
+                  required
+                  error={editFormErrors.email}
+                />
 
-            <FormSelect
-              label="Placement Status"
-              name="placementStatus"
-              value={editFormData.placementStatus}
-              onChange={(e) => setEditFormData({ ...editFormData, placementStatus: e.target.value })}
-              options={[
-                { value: 'NOT_PLACED', label: 'NOT_PLACED' },
-                { value: 'PLACED', label: 'PLACED' },
-              ]}
-              required
-            />
+                <FormInput
+                  label="Phone Number"
+                  name="phone"
+                  value={editFormData.phone}
+                  onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
+                  placeholder="e.g. 9876543210"
+                />
+              </div>
+            </div>
           </div>
         </form>
       </Modal>
 
+      {/* ========================================================================= */}
+      {/* 4. Archive / Restore ConfirmDialog                                        */}
+      {/* ========================================================================= */}
+      <ConfirmDialog
+        isOpen={!!studentToArchive}
+        onClose={() => setStudentToArchive(null)}
+        onConfirm={handleConfirmArchive}
+        title={studentToArchive?.isArchived ? 'Restore Student Record' : 'Archive Student Record'}
+        message={
+          studentToArchive?.isArchived
+            ? `Are you sure you want to restore "${studentToArchive?.name}" (ID #${studentToArchive?.studentId})? Restoring will return this student to the active roster, re-enable their portal login, and make them eligible for active placement drives.`
+            : `Are you sure you want to archive "${studentToArchive?.name}" (ID #${studentToArchive?.studentId})? This safe deactivation hides the student from active candidate lists and disables their portal login while strictly preserving all historical applications, interviews, and placement outcomes.`
+        }
+        confirmText={studentToArchive?.isArchived ? 'Restore Student' : 'Archive Student'}
+        variant={studentToArchive?.isArchived ? 'primary' : 'warning'}
+        isLoading={isArchiving}
+      />
+
+      {/* ========================================================================= */}
+      {/* 5. Hard Delete ConfirmDialog                                              */}
+      {/* ========================================================================= */}
       <ConfirmDialog
         isOpen={!!studentToDelete}
         onClose={() => setStudentToDelete(null)}
         onConfirm={handleConfirmDelete}
-        title="Delete Student"
-        message={`Are you sure you want to delete student "${studentToDelete?.name}" (ID #${studentToDelete?.studentId})? Note: Hard deletion is strictly blocked if the student has associated applications, placements, or user accounts. Use Archive to safely remove them while preserving historical records.`}
-        confirmText="Delete Student"
+        title="Delete Student Record"
+        message={`Are you sure you want to permanently delete student "${studentToDelete?.name}" (ID #${studentToDelete?.studentId})? Notice: Hard deletion will permanently erase this record and is strictly blocked if the student has associated applications, placements, or portal user accounts.`}
+        confirmText="Permanently Delete"
+        variant="danger"
         isLoading={isDeleting}
       />
-
-      {/* Archive / Restore Confirmation Modal */}
-      <Modal
-        isOpen={!!studentToArchive}
-        onClose={() => {
-          if (!isArchiving) {
-            setStudentToArchive(null);
-            setArchiveModalError(null);
-          }
-        }}
-        title={archiveActionType === 'archive' ? 'Archive Student Record' : 'Restore Student Record'}
-        footer={
-          <>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setStudentToArchive(null);
-                setArchiveModalError(null);
-              }}
-              disabled={isArchiving}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant={archiveActionType === 'archive' ? 'danger' : 'primary'}
-              onClick={handleConfirmArchive}
-              isLoading={isArchiving}
-              id="confirm-archive-btn"
-            >
-              {archiveActionType === 'archive' ? 'Confirm & Archive' : 'Confirm & Restore'}
-            </Button>
-          </>
-        }
-      >
-        {studentToArchive && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {archiveModalError && (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.65rem',
-                  padding: '0.85rem 1rem',
-                  borderRadius: 'var(--radius-md)',
-                  backgroundColor: 'rgba(239, 68, 68, 0.12)',
-                  color: 'var(--color-danger, #ef4444)',
-                  fontSize: '0.875rem',
-                  border: '1px solid rgba(239, 68, 68, 0.25)',
-                }}
-              >
-                <AlertTriangle size={18} style={{ flexShrink: 0 }} />
-                <span>{archiveModalError}</span>
-              </div>
-            )}
-
-            <div
-              style={{
-                padding: '0.9rem',
-                backgroundColor: 'var(--color-surface-hover)',
-                borderRadius: 'var(--radius-md)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.85rem',
-              }}
-            >
-              <div
-                style={{
-                  width: '2.75rem',
-                  height: '2.75rem',
-                  borderRadius: '50%',
-                  backgroundColor: archiveActionType === 'archive' ? 'rgba(245, 158, 11, 0.15)' : 'var(--color-primary-subtle)',
-                  color: archiveActionType === 'archive' ? 'var(--color-warning, #f59e0b)' : 'var(--color-primary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                {archiveActionType === 'archive' ? <Archive size={20} /> : <ArchiveRestore size={20} />}
-              </div>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: '1rem' }}>{studentToArchive.name}</div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-                  ID #{studentToArchive.studentId} • {studentToArchive.email} • {studentToArchive.department?.departmentName || '—'}
-                </div>
-              </div>
-            </div>
-
-            {archiveActionType === 'archive' ? (
-              <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>
-                <p style={{ margin: 0, marginBottom: '0.75rem', fontWeight: 500, color: 'var(--color-text-primary)' }}>
-                  Are you sure you want to archive this student? This safe deactivation preserves all historical data:
-                </p>
-                <ul style={{ margin: 0, paddingLeft: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                  <li><strong>Excluded from Active Lists</strong>: Hidden from default rosters and candidate selection dropdowns.</li>
-                  <li><strong>Login Disabled</strong>: Student portal login account will be disabled safely without deleting history.</li>
-                  <li><strong>Ineligible for Drives</strong>: Student cannot submit new job applications or self-register a new account.</li>
-                  <li><strong>Historical Integrity Preserved</strong>: All past applications, interview outcomes, and placement records remain intact.</li>
-                </ul>
-              </div>
-            ) : (
-              <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>
-                <p style={{ margin: 0, fontWeight: 500, color: 'var(--color-text-primary)' }}>
-                  Restoring will return this student to the active roster, re-enable their portal login, and make them eligible for active placement workflows.
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-      </Modal>
     </div>
   );
 }

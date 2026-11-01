@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   BarChart3,
   TrendingUp,
@@ -8,6 +8,9 @@ import {
   Building,
   RefreshCw,
   PieChart as PieChartIcon,
+  CheckCircle2,
+  Clock,
+  UserX,
 } from 'lucide-react';
 import {
   BarChart,
@@ -19,7 +22,6 @@ import {
   PieChart,
   Pie,
   Cell,
-  Legend,
 } from 'recharts';
 
 import { departmentsApi } from '../api/departments';
@@ -28,14 +30,17 @@ import { useToast } from '../contexts/ToastContext';
 import { useTheme } from '../contexts/ThemeContext';
 
 import MetricCard from '../components/common/MetricCard';
-import { Card, CardHeader, CardBody } from '../components/common/Card';
 import Button from '../components/common/Button';
 import EmptyState from '../components/common/EmptyState';
 import ErrorState from '../components/common/ErrorState';
-import { SkeletonMetricsGrid } from '../components/common/LoadingSkeleton';
+import { SkeletonMetricsGrid, SkeletonTable } from '../components/common/LoadingSkeleton';
 import { formatPercentage } from '../utils/formatters';
 
-const PIE_COLORS = ['#10B981', '#64748B'];
+const CHART_COLORS = {
+  placed: '#10B981',
+  unplaced: '#8C7B6E',
+  primary: '#743F1D',
+};
 
 export function StatisticsPage() {
   const { isDark } = useTheme();
@@ -50,8 +55,9 @@ export function StatisticsPage() {
 
   const [allDeptsStats, setAllDeptsStats] = useState([]);
   const [loadingAllStats, setLoadingAllStats] = useState(false);
-  const [activeView, setActiveView] = useState('single'); 
+  const [activeView, setActiveView] = useState('single'); // 'single' | 'compare'
 
+  // Initial load: Fetch departments
   useEffect(() => {
     async function init() {
       try {
@@ -83,7 +89,6 @@ export function StatisticsPage() {
       setStats(result);
     } catch (err) {
       console.error('Failed to execute PlacementStatistics procedure:', err);
-      
       if (err.status === 404) {
         setStats({
           departmentName: departments.find((d) => String(d.departmentId) === String(deptId))?.departmentName || '',
@@ -100,10 +105,10 @@ export function StatisticsPage() {
   };
 
   useEffect(() => {
-    if (selectedDeptId) {
+    if (selectedDeptId && activeView === 'single') {
       fetchDeptStatistics(selectedDeptId);
     }
-  }, [selectedDeptId]);
+  }, [selectedDeptId, activeView]);
 
   const loadAllDepartmentsStats = async () => {
     if (departments.length === 0) return;
@@ -131,6 +136,8 @@ export function StatisticsPage() {
           }
         })
       );
+      // Sort descending by placementPercentage
+      results.sort((a, b) => (b.placementPercentage || 0) - (a.placementPercentage || 0));
       setAllDeptsStats(results);
       setActiveView('compare');
     } catch (err) {
@@ -141,56 +148,137 @@ export function StatisticsPage() {
     }
   };
 
-  const pieData = React.useMemo(() => {
+  const handleRefresh = () => {
+    if (activeView === 'single') {
+      fetchDeptStatistics(selectedDeptId);
+    } else {
+      loadAllDepartmentsStats();
+    }
+    toast.success('Statistics refreshed from database.');
+  };
+
+  const pieData = useMemo(() => {
     if (!stats || stats.totalStudents === 0) return [];
     const placed = stats.studentsPlaced || 0;
     const unplaced = Math.max(0, stats.totalStudents - placed);
     return [
-      { name: 'Placed Students', value: placed },
-      { name: 'Unplaced Students', value: unplaced },
+      { name: 'Placed Students', value: placed, color: CHART_COLORS.placed },
+      { name: 'Unplaced Students', value: unplaced, color: CHART_COLORS.unplaced },
     ];
   }, [stats]);
 
+  const tooltipBg = isDark ? '#201712' : '#FFFFFF';
+  const tooltipBorder = isDark ? '#3D2D22' : '#DFD5C6';
+  const tooltipText = isDark ? '#F8F3EC' : '#261C14';
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
-      
+    <div className="page-container">
+      {/* Header */}
+      <div className="page-header">
+        <div className="page-header-content">
+          <h1 className="page-title">Statistics</h1>
+          <p className="page-subtitle">
+            Placement statistics calculated via stored procedure <code>PlacementStatistics</code>; department drill-down and comparative analytics.
+          </p>
+        </div>
+
+        <div className="page-header-actions">
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={handleRefresh}
+            disabled={loadingStats || loadingAllStats}
+            title="Refresh calculation"
+          >
+            <RefreshCw size={16} className={(loadingStats || loadingAllStats) ? 'spin' : ''} />
+            <span>Refresh</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Control Bar in Card */}
       <div
+        className="card"
         style={{
+          padding: 'var(--space-4)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           flexWrap: 'wrap',
-          gap: '1rem',
+          gap: 'var(--space-3)',
         }}
       >
-        <div>
-          <h2 style={{ fontSize: '1.45rem', fontWeight: 700, margin: 0 }}>
-            Placement Statistics & Analytics
-          </h2>
-          <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
-            Data directly calculated via MySQL Stored Procedure <code>PlacementStatistics(departmentId)</code>.
-          </p>
-        </div>
-
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <Button
-            variant={activeView === 'single' ? 'primary' : 'secondary'}
-            size="sm"
+        {/* Segmented View Control */}
+        <div style={{ display: 'inline-flex', padding: '3px', backgroundColor: 'var(--color-surface-hover)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)' }}>
+          <button
+            type="button"
             onClick={() => setActiveView('single')}
+            style={{
+              padding: '6px 14px',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 600,
+              borderRadius: 'var(--radius-sm)',
+              border: 'none',
+              cursor: 'pointer',
+              backgroundColor: activeView === 'single' ? 'var(--color-surface)' : 'transparent',
+              color: activeView === 'single' ? 'var(--color-primary-600)' : 'var(--color-text-secondary)',
+              boxShadow: activeView === 'single' ? 'var(--shadow-1)' : 'none',
+              transition: 'all var(--duration-fast)',
+            }}
           >
             Single Department
-          </Button>
-          <Button
-            variant={activeView === 'compare' ? 'primary' : 'secondary'}
-            size="sm"
-            onClick={loadAllDepartmentsStats}
-            isLoading={loadingAllStats}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (allDeptsStats.length === 0) {
+                loadAllDepartmentsStats();
+              } else {
+                setActiveView('compare');
+              }
+            }}
+            style={{
+              padding: '6px 14px',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 600,
+              borderRadius: 'var(--radius-sm)',
+              border: 'none',
+              cursor: 'pointer',
+              backgroundColor: activeView === 'compare' ? 'var(--color-surface)' : 'transparent',
+              color: activeView === 'compare' ? 'var(--color-primary-600)' : 'var(--color-text-secondary)',
+              boxShadow: activeView === 'compare' ? 'var(--shadow-1)' : 'none',
+              transition: 'all var(--duration-fast)',
+            }}
           >
-            Comparative View
-          </Button>
+            All Departments
+          </button>
         </div>
+
+        {/* Right side: Department picker (only in single view) */}
+        {activeView === 'single' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+            <label htmlFor="select-dept-stats" style={{ fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>
+              Department:
+            </label>
+            <select
+              id="select-dept-stats"
+              className="form-select"
+              value={selectedDeptId}
+              onChange={(e) => setSelectedDeptId(e.target.value)}
+              style={{ minWidth: '220px', maxWidth: '360px' }}
+              aria-label="Select department to calculate statistics"
+            >
+              {departments.map((d) => (
+                <option key={d.departmentId} value={d.departmentId}>
+                  {d.departmentName} (ID: #{d.departmentId})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
+      {/* Main View Area */}
       {loadingDepts ? (
         <SkeletonMetricsGrid count={4} />
       ) : error ? (
@@ -202,73 +290,26 @@ export function StatisticsPage() {
           description="Register departments to compute placement statistics."
         />
       ) : activeView === 'single' ? (
-        <>
-          
-          <div
-            className="card"
-            style={{
-              padding: '1.25rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: '1rem',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1, minWidth: 260 }}>
-              <label htmlFor="select-department-stats" style={{ fontWeight: 600, fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
-                Select Department:
-              </label>
-              <select
-                id="select-department-stats"
-                className="form-select"
-                value={selectedDeptId}
-                onChange={(e) => setSelectedDeptId(e.target.value)}
-                style={{ maxWidth: 380 }}
-              >
-                {departments.map((d) => (
-                  <option key={d.departmentId} value={d.departmentId}>
-                    {d.departmentName} (ID: #{d.departmentId})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={RefreshCw}
-              onClick={() => fetchDeptStatistics(selectedDeptId)}
-              isLoading={loadingStats}
-            >
-              Refresh Procedure
-            </Button>
-          </div>
-
+        /* ================= SINGLE DEPARTMENT VIEW ================= */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
           {loadingStats ? (
             <SkeletonMetricsGrid count={4} />
           ) : stats ? (
             <>
+              {/* 4 Compact KPI Cards */}
               <div
                 style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                  gap: '1rem',
+                  gap: 'var(--space-4)',
                 }}
               >
                 <MetricCard
-                  title="Department Name"
-                  value={stats.departmentName || '—'}
-                  icon={Building}
-                  variant="default"
-                  subtitle={`Department ID: #${selectedDeptId}`}
-                />
-                <MetricCard
-                  title="Total Students"
+                  title="Enrolled Students"
                   value={stats.totalStudents}
                   icon={Users}
-                  variant="info"
-                  subtitle="Enrolled cohort in department"
+                  variant="default"
+                  subtitle={`${stats.departmentName || 'Department'} cohort`}
                 />
                 <MetricCard
                   title="Students Placed"
@@ -278,211 +319,313 @@ export function StatisticsPage() {
                   subtitle="Verified recruitment offers"
                 />
                 <MetricCard
-                  title="Placement Percentage"
+                  title="Unplaced Seeking"
+                  value={Math.max(0, stats.totalStudents - stats.studentsPlaced)}
+                  icon={UserX}
+                  variant="warning"
+                  subtitle="Actively seeking placement"
+                />
+                <MetricCard
+                  title="Placement Rate"
                   value={formatPercentage(stats.placementPercentage)}
                   icon={Percent}
                   variant="success"
-                  trend="Calculated by SP"
+                  trend="Stored Procedure"
                   subtitle={`${stats.studentsPlaced} of ${stats.totalStudents} placed`}
                 />
               </div>
 
+              {/* Two-Up Grid: Donut Ratio & Summary List */}
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
-                  gap: '1.5rem',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
+                  gap: 'var(--space-6)',
                 }}
               >
-                
-                <Card>
-                  <CardHeader
-                    title="Placement Ratio"
-                    subtitle="Placed candidates vs seeking placement"
-                  />
-                  <CardBody>
-                    {stats.totalStudents === 0 ? (
-                      <EmptyState
-                        title="No Enrolled Students"
-                        description="There are currently no students registered under this department."
-                      />
-                    ) : (
-                      <div style={{ width: '100%', height: 260 }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie
-                              data={pieData}
-                              dataKey="value"
-                              nameKey="name"
-                              cx="50%"
-                              cy="50%"
-                              innerRadius={60}
-                              outerRadius={90}
-                              paddingAngle={4}
-                            >
-                              {pieData.map((entry, index) => (
-                                <Cell
-                                  key={`cell-${index}`}
-                                  fill={PIE_COLORS[index % PIE_COLORS.length]}
-                                />
-                              ))}
-                            </Pie>
-                            <Tooltip
-                              contentStyle={{
-                                backgroundColor: isDark ? '#151F32' : '#FFFFFF',
-                                borderColor: isDark ? '#2A3850' : '#E4E8F0',
-                                borderRadius: '8px',
-                                color: isDark ? '#F1F5F9' : '#172033',
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                              }}
-                            />
-                            <Legend
-                              formatter={(val) => (
-                                <span style={{ color: isDark ? '#A5B4C7' : '#667085', fontSize: '0.785rem' }}>
-                                  {val}
-                                </span>
-                              )}
-                            />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </div>
-                    )}
-                  </CardBody>
-                </Card>
-
-                <Card>
-                  <CardHeader
-                    title="Stored Procedure Output"
-                    subtitle="Exact returned record from CALL PlacementStatistics"
-                  />
-                  <div className="table-container" style={{ border: 'none', borderRadius: 0 }}>
-                    <table className="table">
-                      <thead>
-                        <tr>
-                          <th>Attribute</th>
-                          <th>Database Output</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr>
-                          <td style={{ fontWeight: 600 }}>department_name</td>
-                          <td>{stats.departmentName || '—'}</td>
-                        </tr>
-                        <tr>
-                          <td style={{ fontWeight: 600 }}>total_students</td>
-                          <td>
-                            <strong>{stats.totalStudents}</strong>
-                          </td>
-                        </tr>
-                        <tr>
-                          <td style={{ fontWeight: 600 }}>students_placed</td>
-                          <td>
-                            <strong style={{ color: 'var(--color-success)' }}>
-                              {stats.studentsPlaced}
-                            </strong>
-                          </td>
-                        </tr>
-                        <tr>
-                          <td style={{ fontWeight: 600 }}>placement_percentage</td>
-                          <td>
-                            <span
-                              className="badge badge-success"
-                              style={{ fontSize: '0.85rem' }}
-                            >
-                              {formatPercentage(stats.placementPercentage)}
-                            </span>
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
+                {/* Donut Chart Card */}
+                <div className="card" style={{ padding: 'var(--space-5)' }}>
+                  <div style={{ marginBottom: 'var(--space-4)' }}>
+                    <h3 style={{ fontSize: 'var(--text-base)', fontWeight: 600, margin: 0, color: 'var(--color-text-primary)' }}>
+                      Placement Ratio
+                    </h3>
+                    <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', margin: '2px 0 0 0' }}>
+                      Proportion of placed candidates vs unplaced cohort in {stats.departmentName}
+                    </p>
                   </div>
-                </Card>
+
+                  {stats.totalStudents === 0 ? (
+                    <EmptyState
+                      title="No Enrolled Students"
+                      description="No students are currently enrolled in this department."
+                    />
+                  ) : (
+                    <div style={{ width: '100%', height: 260, position: 'relative' }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={pieData}
+                            dataKey="value"
+                            nameKey="name"
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={65}
+                            outerRadius={95}
+                            paddingAngle={3}
+                          >
+                            {pieData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: tooltipBg,
+                              borderColor: tooltipBorder,
+                              borderRadius: '8px',
+                              color: tooltipText,
+                              boxShadow: 'var(--shadow-2)',
+                              fontSize: '12px',
+                            }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+
+                      {/* Center Stat Label */}
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '50%',
+                          left: '50%',
+                          transform: 'translate(-50%, -50%)',
+                          textAlign: 'center',
+                          pointerEvents: 'none',
+                        }}
+                      >
+                        <div style={{ fontSize: 'var(--text-2xl)', fontWeight: 700, color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+                          {formatPercentage(stats.placementPercentage)}
+                        </div>
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          Placed
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Summary List Card (spec: summary list replacing wrapping legend) */}
+                <div className="card" style={{ padding: 'var(--space-5)' }}>
+                  <div style={{ marginBottom: 'var(--space-4)' }}>
+                    <h3 style={{ fontSize: 'var(--text-base)', fontWeight: 600, margin: 0, color: 'var(--color-text-primary)' }}>
+                      Cohort Breakdown
+                    </h3>
+                    <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', margin: '2px 0 0 0' }}>
+                      Verified figures returned from stored procedure execution
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                    {/* Summary row 1: Placed */}
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: 'var(--space-3) var(--space-4)',
+                        backgroundColor: 'var(--color-surface-hover)',
+                        borderRadius: 'var(--radius-md)',
+                        border: '1px solid var(--color-border)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                        <div style={{ width: 12, height: 12, borderRadius: '2px', backgroundColor: CHART_COLORS.placed }} />
+                        <span style={{ fontSize: 'var(--text-sm)', fontWeight: 500, color: 'var(--color-text-primary)' }}>
+                          Placed Candidates
+                        </span>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <span style={{ fontWeight: 700, fontSize: 'var(--text-base)', fontVariantNumeric: 'tabular-nums' }}>
+                          {stats.studentsPlaced}
+                        </span>
+                        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginLeft: 'var(--space-2)' }}>
+                          ({stats.totalStudents > 0 ? ((stats.studentsPlaced / stats.totalStudents) * 100).toFixed(1) : 0}%)
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Summary row 2: Unplaced */}
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: 'var(--space-3) var(--space-4)',
+                        backgroundColor: 'var(--color-surface-hover)',
+                        borderRadius: 'var(--radius-md)',
+                        border: '1px solid var(--color-border)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                        <div style={{ width: 12, height: 12, borderRadius: '2px', backgroundColor: CHART_COLORS.unplaced }} />
+                        <span style={{ fontSize: 'var(--text-sm)', fontWeight: 500, color: 'var(--color-text-primary)' }}>
+                          Unplaced / In Pipeline
+                        </span>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <span style={{ fontWeight: 700, fontSize: 'var(--text-base)', fontVariantNumeric: 'tabular-nums' }}>
+                          {Math.max(0, stats.totalStudents - stats.studentsPlaced)}
+                        </span>
+                        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginLeft: 'var(--space-2)' }}>
+                          ({stats.totalStudents > 0 ? (((stats.totalStudents - stats.studentsPlaced) / stats.totalStudents) * 100).toFixed(1) : 0}%)
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Procedure Details Box */}
+                    <div
+                      style={{
+                        marginTop: 'var(--space-3)',
+                        padding: 'var(--space-3) var(--space-4)',
+                        backgroundColor: 'var(--color-surface)',
+                        borderRadius: 'var(--radius-md)',
+                        border: '1px solid var(--color-border)',
+                        fontSize: 'var(--text-xs)',
+                        color: 'var(--color-text-secondary)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid var(--color-border-subtle)' }}>
+                        <span style={{ color: 'var(--color-text-muted)' }}>Procedure Signature:</span>
+                        <code>CALL PlacementStatistics({selectedDeptId})</code>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid var(--color-border-subtle)' }}>
+                        <span style={{ color: 'var(--color-text-muted)' }}>Target Department:</span>
+                        <span style={{ fontWeight: 600 }}>{stats.departmentName || '—'}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
+                        <span style={{ color: 'var(--color-text-muted)' }}>Calculation Timestamp:</span>
+                        <span>Just now</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </>
           ) : null}
-        </>
+        </div>
       ) : (
-        
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          <Card>
-            <CardHeader
-              title="Comparative Department Placement Rates"
-              subtitle="Comparison across all academic departments"
-            />
-            <CardBody>
-              <div style={{ width: '100%', height: 320 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={allDeptsStats} margin={{ top: 20, right: 20, left: -10, bottom: 40 }}>
-                    <XAxis
-                      dataKey="departmentName"
-                      stroke={isDark ? '#A5B4C7' : '#667085'}
-                      fontSize={11}
-                      tickLine={false}
-                      angle={-20}
-                      textAnchor="end"
-                    />
-                    <YAxis
-                      stroke={isDark ? '#A5B4C7' : '#667085'}
-                      fontSize={12}
-                      tickLine={false}
-                      unit="%"
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: isDark ? '#151F32' : '#FFFFFF',
-                        borderColor: isDark ? '#2A3850' : '#E4E8F0',
-                        borderRadius: '8px',
-                        color: isDark ? '#F1F5F9' : '#172033',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                      }}
-                      formatter={(value) => [`${value}%`, 'Placement Rate']}
-                    />
-                    <Bar
-                      dataKey="placementPercentage"
-                      name="Placement %"
-                      fill="#3B5BDB"
-                      radius={[4, 4, 0, 0]}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </CardBody>
-          </Card>
+        /* ================= ALL DEPARTMENTS COMPARATIVE VIEW ================= */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+          {loadingAllStats ? (
+            <SkeletonTable rows={5} cols={5} />
+          ) : (
+            <>
+              {/* Horizontal Bar Chart Card */}
+              <div className="card" style={{ padding: 'var(--space-5)' }}>
+                <div style={{ marginBottom: 'var(--space-4)' }}>
+                  <h3 style={{ fontSize: 'var(--text-base)', fontWeight: 600, margin: 0, color: 'var(--color-text-primary)' }}>
+                    Comparative Department Placement Rates
+                  </h3>
+                  <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', margin: '2px 0 0 0' }}>
+                    Ranked by placement percentage (highest to lowest) across all academic units
+                  </p>
+                </div>
 
-          <div className="card" style={{ overflow: 'hidden' }}>
-            <div className="table-container" style={{ border: 'none', borderRadius: 0 }}>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Department ID</th>
-                    <th>Department Name</th>
-                    <th>Total Students</th>
-                    <th>Placed</th>
-                    <th>Placement Rate</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {allDeptsStats.map((d) => (
-                    <tr key={d.departmentId}>
-                      <td style={{ fontWeight: 600, color: 'var(--color-text-muted)' }}>
-                        #{d.departmentId}
-                      </td>
-                      <td style={{ fontWeight: 600 }}>{d.departmentName}</td>
-                      <td>{d.totalStudents}</td>
-                      <td style={{ color: 'var(--color-success)', fontWeight: 600 }}>
-                        {d.studentsPlaced}
-                      </td>
-                      <td>
-                        <span className="badge badge-success">
-                          {formatPercentage(d.placementPercentage)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                <div style={{ width: '100%', height: Math.max(260, allDeptsStats.length * 48) }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      layout="vertical"
+                      data={allDeptsStats}
+                      margin={{ top: 10, right: 30, left: 40, bottom: 10 }}
+                    >
+                      <XAxis
+                        type="number"
+                        domain={[0, 100]}
+                        stroke={isDark ? '#A39282' : '#8C7B6E'}
+                        fontSize={11}
+                        unit="%"
+                      />
+                      <YAxis
+                        type="category"
+                        dataKey="departmentName"
+                        stroke={isDark ? '#F8F3EC' : '#261C14'}
+                        fontSize={12}
+                        tickLine={false}
+                        width={140}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: tooltipBg,
+                          borderColor: tooltipBorder,
+                          borderRadius: '8px',
+                          color: tooltipText,
+                          boxShadow: 'var(--shadow-2)',
+                        }}
+                        formatter={(value) => [`${value}%`, 'Placement Rate']}
+                      />
+                      <Bar
+                        dataKey="placementPercentage"
+                        name="Placement %"
+                        fill="var(--color-primary-600)"
+                        radius={[0, 4, 4, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Compact Summary Table Below Bar Chart */}
+              <div className="card" style={{ overflow: 'hidden' }}>
+                <div className="table-responsive">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: '90px' }}>Dept ID</th>
+                        <th style={{ minWidth: '220px' }}>Department</th>
+                        <th className="col-numeric" style={{ width: '120px', textAlign: 'right' }}>Enrolled</th>
+                        <th className="col-numeric" style={{ width: '120px', textAlign: 'right' }}>Placed</th>
+                        <th className="col-numeric" style={{ width: '150px', textAlign: 'right' }}>Placement Rate</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {allDeptsStats.map((d) => (
+                        <tr key={d.departmentId}>
+                          <td style={{ width: '90px', fontWeight: 600, color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>
+                            #{d.departmentId}
+                          </td>
+                          <td style={{ minWidth: '220px', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                            {d.departmentName}
+                          </td>
+                          <td className="col-numeric" style={{ width: '120px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                            {d.totalStudents}
+                          </td>
+                          <td className="col-numeric" style={{ width: '120px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: 'var(--color-success)' }}>
+                            {d.studentsPlaced}
+                          </td>
+                          <td className="col-numeric" style={{ width: '150px', textAlign: 'right' }}>
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                padding: '2px 8px',
+                                borderRadius: 'var(--radius-full)',
+                                fontSize: 'var(--text-xs)',
+                                fontWeight: 700,
+                                fontVariantNumeric: 'tabular-nums',
+                                backgroundColor: d.placementPercentage >= 75 ? 'var(--color-success-bg)' : 'var(--color-surface-hover)',
+                                color: d.placementPercentage >= 75 ? 'var(--color-success-text)' : 'var(--color-text-primary)',
+                                border: d.placementPercentage >= 75 ? '1px solid var(--color-success-border)' : '1px solid var(--color-border)',
+                              }}
+                            >
+                              {formatPercentage(d.placementPercentage)}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

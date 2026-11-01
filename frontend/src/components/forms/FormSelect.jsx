@@ -1,4 +1,5 @@
 import React from 'react';
+import { AlertCircle } from 'lucide-react';
 
 export function FormSelect({
   label,
@@ -22,7 +23,7 @@ export function FormSelect({
       {label && (
         <label htmlFor={selectId} className="form-label">
           {label}
-          {required && <span className="form-required">*</span>}
+          {required && <span className="form-required" aria-hidden="true">*</span>}
         </label>
       )}
 
@@ -32,6 +33,7 @@ export function FormSelect({
         value={value}
         onChange={onChange}
         required={required}
+        aria-required={required}
         disabled={disabled}
         className={`form-select ${error ? 'error' : ''}`}
         aria-invalid={!!error}
@@ -53,8 +55,9 @@ export function FormSelect({
       </select>
 
       {error && (
-        <span id={`${selectId}-error`} className="form-error">
-          {error}
+        <span id={`${selectId}-error`} className="form-error" role="alert">
+          <AlertCircle size={14} strokeWidth={1.75} style={{ flexShrink: 0 }} />
+          <span>{error}</span>
         </span>
       )}
 

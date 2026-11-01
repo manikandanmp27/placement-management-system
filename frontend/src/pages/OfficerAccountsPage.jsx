@@ -5,7 +5,6 @@ import {
   KeyRound,
   UserX,
   UserCheck,
-  Search,
   RefreshCw,
   AlertTriangle,
   Lock,
@@ -15,22 +14,25 @@ import {
   EyeOff,
   CheckCircle2,
 } from 'lucide-react';
+
 import { officersApi } from '../api/officers';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { Card } from '../components/common/Card';
-import { MetricCard } from '../components/common/MetricCard';
-import { Modal } from '../components/common/Modal';
-import { StatusBadge } from '../components/common/StatusBadge';
-import { SkeletonTable } from '../components/common/LoadingSkeleton';
-import { EmptyState } from '../components/common/EmptyState';
 
-import { ErrorState } from '../components/common/ErrorState';
+import MetricCard from '../components/common/MetricCard';
+import Button from '../components/common/Button';
+import SearchInput from '../components/common/SearchInput';
+import Modal from '../components/common/Modal';
+import ConfirmDialog from '../components/common/ConfirmDialog';
+import StatusBadge, { CategoryTag } from '../components/common/StatusBadge';
+import EmptyState from '../components/common/EmptyState';
+import ErrorState from '../components/common/ErrorState';
+import { SkeletonTable } from '../components/common/LoadingSkeleton';
 import { formatDate } from '../utils/formatters';
 
 export function OfficerAccountsPage() {
   const { user } = useAuth();
-  const { showToast } = useToast();
+  const toast = useToast();
 
   const [officers, setOfficers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -49,11 +51,9 @@ export function OfficerAccountsPage() {
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState('');
 
-  // Status Change (Enable / Disable) Modal State
-  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
-  const [selectedOfficerForStatus, setSelectedOfficerForStatus] = useState(null);
+  // Status Change (Enable / Disable) Confirm Dialog State
+  const [officerToToggleStatus, setOfficerToToggleStatus] = useState(null);
   const [statusSubmitting, setStatusSubmitting] = useState(false);
-  const [statusError, setStatusError] = useState('');
 
   // Reset Password Modal State
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
@@ -71,7 +71,8 @@ export function OfficerAccountsPage() {
       const data = await officersApi.getAll();
       setOfficers(Array.isArray(data) ? data : []);
     } catch (err) {
-      setError(err?.message || 'Failed to load officer accounts');
+      console.error('Failed to load officer accounts:', err);
+      setError(err?.message || 'Failed to load officer accounts.');
     } finally {
       setLoading(false);
     }
@@ -81,7 +82,7 @@ export function OfficerAccountsPage() {
     loadOfficers();
   }, [loadOfficers]);
 
-  // Derived filtered officers
+  // Filtered officers
   const filteredOfficers = useMemo(() => {
     return officers.filter((officer) => {
       const query = searchQuery.trim().toLowerCase();
@@ -101,7 +102,7 @@ export function OfficerAccountsPage() {
     });
   }, [officers, searchQuery, statusFilter]);
 
-  // Derived metrics
+  // Derived metrics for governance strip
   const totalOfficers = officers.length;
   const activeOfficers = officers.filter((o) => o.enabled).length;
   const disabledOfficers = officers.filter((o) => !o.enabled).length;
@@ -117,12 +118,12 @@ export function OfficerAccountsPage() {
   };
 
   const handleCreateSubmit = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     setCreateError('');
 
     const normalizedEmail = createEmail.trim().toLowerCase();
     if (!normalizedEmail) {
-      setCreateError('Email is required.');
+      setCreateError('Officer email address is required.');
       return;
     }
 
@@ -149,42 +150,33 @@ export function OfficerAccountsPage() {
         password: createPassword,
       });
 
-      showToast(`Placement officer account for "${newOfficer.email}" created successfully.`, 'success');
+      toast.success(`Placement officer account for "${newOfficer.email}" created successfully.`);
       setIsCreateModalOpen(false);
       await loadOfficers();
     } catch (err) {
+      console.error('Failed to provision officer:', err);
       setCreateError(err?.message || 'Failed to provision officer account.');
     } finally {
       setCreateSubmitting(false);
     }
   };
 
-  // Handlers for Status Change (Enable / Disable)
-  const handleOpenStatusModal = (officer) => {
-    setSelectedOfficerForStatus(officer);
-    setStatusError('');
-    setIsStatusModalOpen(true);
-  };
+  // Handlers for Status Change (Enable / Disable) via ConfirmDialog
+  const handleConfirmToggleStatus = async () => {
+    if (!officerToToggleStatus) return;
 
-  const handleStatusSubmit = async () => {
-    if (!selectedOfficerForStatus) return;
-
-    const newStatus = !selectedOfficerForStatus.enabled;
+    const newStatus = !officerToToggleStatus.enabled;
     const actionLabel = newStatus ? 'enabled' : 'disabled';
 
     try {
       setStatusSubmitting(true);
-      setStatusError('');
-
-      await officersApi.updateStatus(selectedOfficerForStatus.userId, newStatus);
-      showToast(
-        `Officer account "${selectedOfficerForStatus.email}" has been ${actionLabel}.`,
-        'success'
-      );
-      setIsStatusModalOpen(false);
+      await officersApi.updateStatus(officerToToggleStatus.userId, newStatus);
+      toast.success(`Officer account "${officerToToggleStatus.email}" has been ${actionLabel}.`);
+      setOfficerToToggleStatus(null);
       await loadOfficers();
     } catch (err) {
-      setStatusError(err?.message || `Failed to update officer status.`);
+      console.error('Failed to update officer status:', err);
+      toast.error(err?.message || `Failed to update officer status.`);
     } finally {
       setStatusSubmitting(false);
     }
@@ -201,7 +193,7 @@ export function OfficerAccountsPage() {
   };
 
   const handleResetSubmit = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     if (!selectedOfficerForReset) return;
     setResetError('');
 
@@ -218,13 +210,11 @@ export function OfficerAccountsPage() {
     try {
       setResetSubmitting(true);
       await officersApi.resetPassword(selectedOfficerForReset.userId, resetNewPassword);
-      showToast(
-        `Password for officer "${selectedOfficerForReset.email}" reset successfully.`,
-        'success'
-      );
+      toast.success(`Password for officer "${selectedOfficerForReset.email}" reset successfully.`);
       setIsResetModalOpen(false);
       await loadOfficers();
     } catch (err) {
+      console.error('Failed to reset password:', err);
       setResetError(err?.message || 'Failed to reset officer password.');
     } finally {
       setResetSubmitting(false);
@@ -242,33 +232,15 @@ export function OfficerAccountsPage() {
   return (
     <div className="page-container">
       {/* Header */}
-      <div className="page-header" style={{ marginBottom: '1.5rem' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.25rem' }}>
-            <div
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 36,
-                height: 36,
-                borderRadius: 'var(--radius-md)',
-                backgroundColor: 'var(--color-primary-subtle)',
-                color: 'var(--color-primary)',
-              }}
-            >
-              <ShieldCheck size={20} />
-            </div>
-            <h1 className="page-title" style={{ margin: 0 }}>
-              Officer Accounts
-            </h1>
-          </div>
-          <p className="page-subtitle" style={{ margin: 0 }}>
-            Provision and manage university placement officer accounts, login privileges, and credentials.
+      <div className="page-header">
+        <div className="page-header-content">
+          <h1 className="page-title">Officer Accounts</h1>
+          <p className="page-subtitle">
+            Provision and govern university placement officer accounts, access privileges, and security credentials.
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+        <div className="page-header-actions">
           <button
             type="button"
             className="btn btn-secondary"
@@ -280,24 +252,23 @@ export function OfficerAccountsPage() {
             <span>Refresh</span>
           </button>
 
-          <button
-            type="button"
-            className="btn btn-primary"
+          <Button
+            variant="primary"
+            icon={UserPlus}
             onClick={handleOpenCreateModal}
+            id="btn-provision-officer"
           >
-            <UserPlus size={16} />
-            <span>Provision Officer</span>
-          </button>
+            Provision Officer
+          </Button>
         </div>
       </div>
 
-      {/* Metrics Row */}
+      {/* Governance Strip (Compact Metrics) */}
       <div
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-          gap: '1rem',
-          marginBottom: '1.5rem',
+          gap: 'var(--space-4)',
         }}
       >
         <MetricCard
@@ -305,67 +276,55 @@ export function OfficerAccountsPage() {
           value={totalOfficers}
           icon={Shield}
           variant="primary"
-          subtitle="Provisioned officers"
+          subtitle="Provisioned officer accounts"
         />
         <MetricCard
           title="Active Officers"
           value={activeOfficers}
           icon={UserCheck}
           variant="success"
-          subtitle="Authorized to log in"
+          subtitle="Authorized to sign in"
         />
         <MetricCard
           title="Disabled Accounts"
           value={disabledOfficers}
           icon={UserX}
-          variant={disabledOfficers > 0 ? 'danger' : 'default'}
+          variant={disabledOfficers > 0 ? 'warning' : 'default'}
           subtitle="Access suspended"
         />
       </div>
 
       {/* Main Content Card */}
-      <Card>
-        {/* Filter and Search Bar */}
+      <div className="card">
+        {/* FilterBar */}
         <div
           style={{
             display: 'flex',
             flexWrap: 'wrap',
-            gap: '1rem',
-            justifyContent: 'space-between',
+            gap: 'var(--space-3)',
             alignItems: 'center',
-            marginBottom: '1.25rem',
-            paddingBottom: '1.25rem',
+            justifyContent: 'space-between',
+            padding: 'var(--space-4)',
             borderBottom: '1px solid var(--color-border)',
           }}
         >
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', flex: 1, minWidth: '260px' }}>
-            <div style={{ position: 'relative', flex: 1, minWidth: '220px' }}>
-              <Search
-                size={16}
-                style={{
-                  position: 'absolute',
-                  left: '0.75rem',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  color: 'var(--color-text-muted)',
-                }}
-              />
-              <input
-                type="text"
-                className="form-input"
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', flex: 1, minWidth: '260px' }}>
+            <div style={{ flex: 1, minWidth: '220px', maxWidth: '400px' }}>
+              <SearchInput
                 placeholder="Search by email or officer ID..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{ paddingLeft: '2.25rem' }}
+                onChange={setSearchQuery}
+                id="officer-search-input"
               />
             </div>
 
-            <div style={{ minWidth: '160px' }}>
+            <div style={{ minWidth: '180px' }}>
               <select
                 className="form-select"
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
                 aria-label="Filter by account status"
+                id="officer-status-filter"
               >
                 <option value="ALL">All Statuses</option>
                 <option value="ACTIVE">Active Only</option>
@@ -374,8 +333,9 @@ export function OfficerAccountsPage() {
             </div>
           </div>
 
-          <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-            Showing <strong>{filteredOfficers.length}</strong> of <strong>{totalOfficers}</strong> accounts
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+            Showing <strong style={{ color: 'var(--color-text-primary)' }}>{filteredOfficers.length}</strong> of{' '}
+            <strong style={{ color: 'var(--color-text-primary)' }}>{totalOfficers}</strong> accounts
           </div>
         </div>
 
@@ -383,7 +343,6 @@ export function OfficerAccountsPage() {
         {loading ? (
           <SkeletonTable rows={5} cols={6} />
         ) : error ? (
-
           <ErrorState
             title="Failed to Load Officers"
             message={error}
@@ -391,47 +350,28 @@ export function OfficerAccountsPage() {
           />
         ) : filteredOfficers.length === 0 ? (
           <EmptyState
-            title="No Officer Accounts Found"
-            message={
+            icon={Shield}
+            title={searchQuery || statusFilter !== 'ALL' ? 'No matching officer accounts' : 'No officer accounts'}
+            description={
               searchQuery || statusFilter !== 'ALL'
-                ? 'No accounts match the current search filters. Try clearing your filters.'
-                : 'No placement officer accounts have been provisioned yet. Click "Provision Officer" above to create the first account.'
+                ? 'No accounts match the current search filters.'
+                : 'No placement officer accounts have been provisioned yet.'
             }
-            action={
-              (searchQuery || statusFilter !== 'ALL') ? (
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => {
-                    setSearchQuery('');
-                    setStatusFilter('ALL');
-                  }}
-                >
-                  Clear Filters
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm"
-                  onClick={handleOpenCreateModal}
-                >
-                  <UserPlus size={15} />
-                  <span>Provision Officer</span>
-                </button>
-              )
-            }
+            actionText={!(searchQuery || statusFilter !== 'ALL') ? 'Provision Officer' : undefined}
+            actionIcon={UserPlus}
+            onAction={!(searchQuery || statusFilter !== 'ALL') ? handleOpenCreateModal : undefined}
           />
         ) : (
           <div className="table-responsive">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th style={{ width: '90px' }}>ID</th>
-                  <th>Officer Email</th>
-                  <th>Role</th>
-                  <th>Status</th>
-                  <th>Created Date</th>
-                  <th style={{ textAlign: 'right', width: '220px' }}>Actions</th>
+                  <th style={{ width: '80px' }}>ID</th>
+                  <th style={{ minWidth: '240px' }}>Officer Email</th>
+                  <th style={{ width: '150px' }}>Role</th>
+                  <th className="col-status" style={{ width: '130px', textAlign: 'center' }}>Status</th>
+                  <th className="col-date" style={{ width: '140px' }}>Created Date</th>
+                  <th className="col-actions" style={{ textAlign: 'right', width: '220px' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -439,69 +379,84 @@ export function OfficerAccountsPage() {
                   const isCurrent = isCurrentAdmin(officer);
                   return (
                     <tr key={officer.userId}>
-                      <td>
-                        <span style={{ fontWeight: 600, color: 'var(--color-text-muted)' }}>
-                          #{officer.userId}
-                        </span>
+                      {/* ID */}
+                      <td style={{ width: '80px', fontWeight: 600, color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>
+                        #{officer.userId}
                       </td>
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <Mail size={15} style={{ color: 'var(--color-text-muted)' }} />
-                          <span style={{ fontWeight: 600 }}>{officer.email}</span>
+
+                      {/* Email + Self Tag */}
+                      <td style={{ minWidth: '240px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                          <Mail size={15} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
+                          <span style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>{officer.email}</span>
                           {isCurrent && (
                             <span
-                              className="badge badge-neutral"
-                              style={{ fontSize: '0.7rem', padding: '0.15rem 0.4rem' }}
-                              title="Current Administrator Account"
+                              style={{
+                                fontSize: '10px',
+                                fontWeight: 700,
+                                textTransform: 'uppercase',
+                                padding: '1px 6px',
+                                borderRadius: 'var(--radius-sm)',
+                                backgroundColor: 'var(--color-primary-100)',
+                                color: 'var(--color-primary-700)',
+                              }}
+                              title="Current Administrator Session"
                             >
                               You
                             </span>
                           )}
                         </div>
                       </td>
-                      <td>
-                        <span
-                          className="badge badge-info"
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.35rem',
-                            fontWeight: 600,
-                          }}
-                        >
-                          <Shield size={12} />
-                          Placement Officer
-                        </span>
+
+                      {/* Role */}
+                      <td style={{ width: '150px' }}>
+                        <CategoryTag label="Placement Officer" />
                       </td>
-                      <td>
+
+                      {/* Status */}
+                      <td className="col-status" style={{ width: '130px', textAlign: 'center' }}>
                         <StatusBadge status={officer.enabled ? 'ACTIVE' : 'DISABLED'} />
                       </td>
-                      <td>
-                        <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-                          {formatDate(officer.createdAt)}
-                        </span>
+
+                      {/* Created Date */}
+                      <td className="col-date" style={{ width: '140px', fontSize: 'var(--text-xs)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                        {formatDate(officer.createdAt)}
                       </td>
-                      <td style={{ textAlign: 'right' }}>
+
+                      {/* Actions */}
+                      <td className="col-actions" style={{ width: '220px', textAlign: 'right' }}>
                         {isCurrent ? (
                           <span
                             style={{
-                              fontSize: '0.75rem',
+                              fontSize: 'var(--text-xs)',
                               color: 'var(--color-text-muted)',
                               fontStyle: 'italic',
                             }}
-                            title="Admins cannot modify their own account through this view"
+                            title="Administrators cannot modify their own status through this view"
                           >
                             Protected (Self)
                           </span>
                         ) : (
-                          <div style={{ display: 'inline-flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
+                          <div style={{ display: 'inline-flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
+                            {/* Reset Password Button */}
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => handleOpenResetModal(officer)}
+                              title="Reset officer password"
+                              id={`btn-reset-officer-${officer.userId}`}
+                            >
+                              <KeyRound size={14} />
+                              <span>Reset Password</span>
+                            </button>
+
                             {/* Enable / Disable Button */}
                             <button
                               type="button"
-                              className={`btn btn-sm ${officer.enabled ? 'btn-danger' : 'btn-secondary'}`}
-                              onClick={() => handleOpenStatusModal(officer)}
+                              className={`btn btn-sm ${officer.enabled ? 'btn-ghost text-danger' : 'btn-secondary'}`}
+                              onClick={() => setOfficerToToggleStatus(officer)}
                               title={officer.enabled ? 'Disable officer account' : 'Enable officer account'}
-                              style={{ padding: '0.25rem 0.55rem' }}
+                              id={`btn-status-officer-${officer.userId}`}
                             >
                               {officer.enabled ? (
                                 <>
@@ -515,18 +470,6 @@ export function OfficerAccountsPage() {
                                 </>
                               )}
                             </button>
-
-                            {/* Reset Password Button */}
-                            <button
-                              type="button"
-                              className="btn btn-secondary btn-sm"
-                              onClick={() => handleOpenResetModal(officer)}
-                              title="Reset officer password"
-                              style={{ padding: '0.25rem 0.55rem' }}
-                            >
-                              <KeyRound size={14} />
-                              <span>Reset Password</span>
-                            </button>
                           </div>
                         )}
                       </td>
@@ -537,460 +480,342 @@ export function OfficerAccountsPage() {
             </table>
           </div>
         )}
-      </Card>
+      </div>
 
       {/* ========================================================================= */}
       {/* 1. Create Placement Officer Modal                                         */}
       {/* ========================================================================= */}
-      {isCreateModalOpen && (
-        <Modal
-          isOpen={isCreateModalOpen}
-          onClose={() => !createSubmitting && setIsCreateModalOpen(false)}
-          title="Provision Placement Officer Account"
-        >
-          <form onSubmit={handleCreateSubmit}>
-            <div style={{ marginBottom: '1rem' }}>
-              <p style={{ margin: '0 0 1rem 0', fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
-                Create a login account for an authorized campus placement officer. Public officer registration is strictly prohibited.
-              </p>
+      <Modal
+        isOpen={isCreateModalOpen}
+        onClose={() => !createSubmitting && setIsCreateModalOpen(false)}
+        title="Provision Placement Officer Account"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => setIsCreateModalOpen(false)}
+              disabled={createSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleCreateSubmit}
+              isLoading={createSubmitting}
+              id="submit-provision-officer-btn"
+            >
+              Provision Account
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={handleCreateSubmit}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+            <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+              Create a login account for an authorized campus placement officer. Public officer self-registration is strictly prohibited.
+            </p>
 
-              {createError && (
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    padding: '0.75rem',
-                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                    border: '1px solid var(--color-danger)',
-                    borderRadius: 'var(--radius-md)',
-                    color: 'var(--color-danger)',
-                    fontSize: '0.875rem',
-                    marginBottom: '1rem',
-                  }}
-                >
-                  <AlertTriangle size={16} style={{ flexShrink: 0 }} />
-                  <span>{createError}</span>
-                </div>
-              )}
-
-              {/* Role Indicator Card */}
+            {createError && (
               <div
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '0.75rem',
-                  padding: '0.75rem 1rem',
-                  backgroundColor: 'var(--color-primary-subtle)',
+                  gap: 'var(--space-2)',
+                  padding: 'var(--space-3)',
+                  backgroundColor: 'var(--color-danger-bg)',
+                  border: '1px solid var(--color-danger-border)',
                   borderRadius: 'var(--radius-md)',
-                  border: '1px solid rgba(59, 130, 246, 0.2)',
-                  marginBottom: '1rem',
-                }}
-              >
-                <ShieldCheck size={20} style={{ color: 'var(--color-primary)', flexShrink: 0 }} />
-                <div style={{ fontSize: '0.85rem' }}>
-                  <div style={{ fontWeight: 600, color: 'var(--color-primary)' }}>
-                    System Role: ROLE_PLACEMENT_OFFICER
-                  </div>
-                  <div style={{ color: 'var(--color-text-muted)' }}>
-                    Assigned automatically server-side. Officers can post jobs, manage students, review applications, and record offers.
-                  </div>
-                </div>
-              </div>
-
-              {/* Email */}
-              <div className="form-group" style={{ marginBottom: '1rem' }}>
-                <label className="form-label" htmlFor="create-officer-email">
-                  Officer Email Address <span style={{ color: 'var(--color-danger)' }}>*</span>
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <Mail
-                    size={16}
-                    style={{
-                      position: 'absolute',
-                      left: '0.75rem',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      color: 'var(--color-text-muted)',
-                    }}
-                  />
-                  <input
-                    id="create-officer-email"
-                    type="email"
-                    className="form-input"
-                    placeholder="officer@university.edu"
-                    value={createEmail}
-                    onChange={(e) => setCreateEmail(e.target.value)}
-                    required
-                    style={{ paddingLeft: '2.25rem' }}
-                    autoComplete="off"
-                  />
-                </div>
-              </div>
-
-              {/* Password */}
-              <div className="form-group" style={{ marginBottom: '1rem' }}>
-                <label className="form-label" htmlFor="create-officer-password">
-                  Initial Password <span style={{ color: 'var(--color-danger)' }}>*</span>
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <Lock
-                    size={16}
-                    style={{
-                      position: 'absolute',
-                      left: '0.75rem',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      color: 'var(--color-text-muted)',
-                    }}
-                  />
-                  <input
-                    id="create-officer-password"
-                    type={showCreatePassword ? 'text' : 'password'}
-                    className="form-input"
-                    placeholder="Minimum 8 characters"
-                    value={createPassword}
-                    onChange={(e) => setCreatePassword(e.target.value)}
-                    required
-                    minLength={8}
-                    style={{ paddingLeft: '2.25rem', paddingRight: '2.5rem' }}
-                  />
-                  <button
-                    type="button"
-                    className="icon-btn icon-btn-sm"
-                    onClick={() => setShowCreatePassword((prev) => !prev)}
-                    title={showCreatePassword ? 'Hide password' : 'Show password'}
-                    style={{
-                      position: 'absolute',
-                      right: '0.5rem',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      color: 'var(--color-text-muted)',
-                    }}
-                  >
-                    {showCreatePassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.35rem' }}>
-                  Must be at least 8 characters. Hashed via BCrypt before storage.
-                </div>
-              </div>
-
-              {/* Confirm Password */}
-              <div className="form-group" style={{ marginBottom: '1.25rem' }}>
-                <label className="form-label" htmlFor="create-officer-confirm-password">
-                  Confirm Initial Password <span style={{ color: 'var(--color-danger)' }}>*</span>
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <Lock
-                    size={16}
-                    style={{
-                      position: 'absolute',
-                      left: '0.75rem',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      color: 'var(--color-text-muted)',
-                    }}
-                  />
-                  <input
-                    id="create-officer-confirm-password"
-                    type={showCreatePassword ? 'text' : 'password'}
-                    className="form-input"
-                    placeholder="Repeat initial password"
-                    value={createConfirmPassword}
-                    onChange={(e) => setCreateConfirmPassword(e.target.value)}
-                    required
-                    minLength={8}
-                    style={{ paddingLeft: '2.25rem' }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setIsCreateModalOpen(false)}
-                disabled={createSubmitting}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={createSubmitting}
-              >
-                {createSubmitting ? (
-                  <>
-                    <RefreshCw size={15} className="spin" />
-                    <span>Provisioning...</span>
-                  </>
-                ) : (
-                  <>
-                    <UserPlus size={15} />
-                    <span>Provision Officer</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
-        </Modal>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 2. Enable / Disable Status Confirmation Modal                             */}
-      {/* ========================================================================= */}
-      {isStatusModalOpen && selectedOfficerForStatus && (
-        <Modal
-          isOpen={isStatusModalOpen}
-          onClose={() => !statusSubmitting && setIsStatusModalOpen(false)}
-          title={selectedOfficerForStatus.enabled ? 'Disable Officer Account' : 'Enable Officer Account'}
-        >
-          <div>
-            {statusError && (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  padding: '0.75rem',
-                  backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                  border: '1px solid var(--color-danger)',
-                  borderRadius: 'var(--radius-md)',
-                  color: 'var(--color-danger)',
-                  fontSize: '0.875rem',
-                  marginBottom: '1rem',
+                  color: 'var(--color-danger-text)',
+                  fontSize: 'var(--text-xs)',
                 }}
               >
                 <AlertTriangle size={16} style={{ flexShrink: 0 }} />
-                <span>{statusError}</span>
+                <span>{createError}</span>
               </div>
             )}
 
-            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.25rem' }}>
-              <div
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 'var(--radius-full)',
-                  backgroundColor: selectedOfficerForStatus.enabled
-                    ? 'rgba(239, 68, 68, 0.12)'
-                    : 'rgba(34, 197, 94, 0.12)',
-                  color: selectedOfficerForStatus.enabled
-                    ? 'var(--color-danger)'
-                    : 'var(--color-success)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                }}
-              >
-                {selectedOfficerForStatus.enabled ? <UserX size={22} /> : <UserCheck size={22} />}
-              </div>
-
-              <div>
-                <p style={{ margin: '0 0 0.5rem 0', fontWeight: 600, fontSize: '0.95rem' }}>
-                  {selectedOfficerForStatus.enabled
-                    ? `Are you sure you want to disable officer account "${selectedOfficerForStatus.email}"?`
-                    : `Are you sure you want to re-enable officer account "${selectedOfficerForStatus.email}"?`}
-                </p>
-
-                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
-                  {selectedOfficerForStatus.enabled ? (
-                    <>
-                      <strong>Security Impact:</strong> This placement officer will be immediately blocked from logging in. Any existing active JWT session tokens for this account will be rejected upon their next request.
-                    </>
-                  ) : (
-                    <>
-                      <strong>Access Restored:</strong> This placement officer will once again be able to log in and access administrative placement operations.
-                    </>
-                  )}
-                </p>
+            {/* Role Notice */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-3)',
+                padding: 'var(--space-3) var(--space-4)',
+                backgroundColor: 'var(--color-surface-hover)',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-border)',
+              }}
+            >
+              <ShieldCheck size={20} style={{ color: 'var(--color-primary-600)', flexShrink: 0 }} />
+              <div style={{ fontSize: 'var(--text-xs)' }}>
+                <div style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                  Assigned Role: ROLE_PLACEMENT_OFFICER
+                </div>
+                <div style={{ color: 'var(--color-text-muted)' }}>
+                  Officers can post drives, manage student records, review applications, and record placements.
+                </div>
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setIsStatusModalOpen(false)}
-                disabled={statusSubmitting}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className={`btn ${selectedOfficerForStatus.enabled ? 'btn-danger' : 'btn-success'}`}
-                onClick={handleStatusSubmit}
-                disabled={statusSubmitting}
-              >
-                {statusSubmitting ? (
-                  <>
-                    <RefreshCw size={15} className="spin" />
-                    <span>Updating...</span>
-                  </>
-                ) : selectedOfficerForStatus.enabled ? (
-                  <>
-                    <UserX size={15} />
-                    <span>Confirm Disable</span>
-                  </>
-                ) : (
-                  <>
-                    <UserCheck size={15} />
-                    <span>Confirm Enable</span>
-                  </>
-                )}
-              </button>
+            {/* Email Field */}
+            <div className="form-group">
+              <label className="form-label" htmlFor="create-officer-email">
+                Officer Email Address <span style={{ color: 'var(--color-danger)' }}>*</span>
+              </label>
+              <div style={{ position: 'relative' }}>
+                <Mail
+                  size={16}
+                  style={{
+                    position: 'absolute',
+                    left: 'var(--space-3)',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    color: 'var(--color-text-muted)',
+                  }}
+                />
+                <input
+                  id="create-officer-email"
+                  type="email"
+                  className="form-input"
+                  placeholder="officer@university.edu"
+                  value={createEmail}
+                  onChange={(e) => setCreateEmail(e.target.value)}
+                  required
+                  style={{ paddingLeft: '2.5rem' }}
+                  autoComplete="off"
+                />
+              </div>
+            </div>
+
+            {/* Password Field */}
+            <div className="form-group">
+              <label className="form-label" htmlFor="create-officer-password">
+                Initial Password <span style={{ color: 'var(--color-danger)' }}>*</span>
+              </label>
+              <div style={{ position: 'relative' }}>
+                <Lock
+                  size={16}
+                  style={{
+                    position: 'absolute',
+                    left: 'var(--space-3)',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    color: 'var(--color-text-muted)',
+                  }}
+                />
+                <input
+                  id="create-officer-password"
+                  type={showCreatePassword ? 'text' : 'password'}
+                  className="form-input"
+                  placeholder="Minimum 8 characters"
+                  value={createPassword}
+                  onChange={(e) => setCreatePassword(e.target.value)}
+                  required
+                  minLength={8}
+                  style={{ paddingLeft: '2.5rem', paddingRight: '2.5rem' }}
+                />
+                <button
+                  type="button"
+                  className="icon-btn icon-btn-sm"
+                  onClick={() => setShowCreatePassword((prev) => !prev)}
+                  title={showCreatePassword ? 'Hide password' : 'Show password'}
+                  style={{
+                    position: 'absolute',
+                    right: 'var(--space-2)',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                  }}
+                >
+                  {showCreatePassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: '4px' }}>
+                Must be at least 8 characters. Securely hashed via BCrypt before storage.
+              </div>
+            </div>
+
+            {/* Confirm Password Field */}
+            <div className="form-group">
+              <label className="form-label" htmlFor="create-officer-confirm-password">
+                Confirm Initial Password <span style={{ color: 'var(--color-danger)' }}>*</span>
+              </label>
+              <div style={{ position: 'relative' }}>
+                <Lock
+                  size={16}
+                  style={{
+                    position: 'absolute',
+                    left: 'var(--space-3)',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    color: 'var(--color-text-muted)',
+                  }}
+                />
+                <input
+                  id="create-officer-confirm-password"
+                  type={showCreatePassword ? 'text' : 'password'}
+                  className="form-input"
+                  placeholder="Repeat initial password"
+                  value={createConfirmPassword}
+                  onChange={(e) => setCreateConfirmPassword(e.target.value)}
+                  required
+                  minLength={8}
+                  style={{ paddingLeft: '2.5rem' }}
+                />
+              </div>
             </div>
           </div>
-        </Modal>
-      )}
+        </form>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* 2. Enable / Disable Status ConfirmDialog                                  */}
+      {/* ========================================================================= */}
+      <ConfirmDialog
+        isOpen={!!officerToToggleStatus}
+        onClose={() => setOfficerToToggleStatus(null)}
+        onConfirm={handleConfirmToggleStatus}
+        title={officerToToggleStatus?.enabled ? 'Disable Officer Account' : 'Enable Officer Account'}
+        message={
+          officerToToggleStatus?.enabled
+            ? `Are you sure you want to disable officer account "${officerToToggleStatus?.email}"? Security Impact: They will be immediately blocked from signing in; any active JWT sessions are revoked.`
+            : `Are you sure you want to re-enable officer account "${officerToToggleStatus?.email}"? Access Restored: This placement officer will once again be able to sign in and perform placement tasks.`
+        }
+        confirmText={officerToToggleStatus?.enabled ? 'Disable Account' : 'Enable Account'}
+        variant={officerToToggleStatus?.enabled ? 'danger' : 'primary'}
+        isLoading={statusSubmitting}
+      />
 
       {/* ========================================================================= */}
       {/* 3. Reset Officer Password Modal                                           */}
       {/* ========================================================================= */}
-      {isResetModalOpen && selectedOfficerForReset && (
-        <Modal
-          isOpen={isResetModalOpen}
-          onClose={() => !resetSubmitting && setIsResetModalOpen(false)}
-          title="Reset Officer Password"
-        >
-          <form onSubmit={handleResetSubmit}>
-            <div style={{ marginBottom: '1rem' }}>
-              <p style={{ margin: '0 0 1rem 0', fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
-                Set a new password for placement officer <strong>{selectedOfficerForReset.email}</strong>.
-              </p>
+      <Modal
+        isOpen={isResetModalOpen}
+        onClose={() => !resetSubmitting && setIsResetModalOpen(false)}
+        title="Reset Officer Password"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => setIsResetModalOpen(false)}
+              disabled={resetSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleResetSubmit}
+              isLoading={resetSubmitting}
+              id="submit-reset-password-btn"
+            >
+              Reset Password
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={handleResetSubmit}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+            <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+              Set a new security password for placement officer <strong>{selectedOfficerForReset?.email}</strong>.
+            </p>
 
-              {resetError && (
-                <div
+            {resetError && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                  padding: 'var(--space-3)',
+                  backgroundColor: 'var(--color-danger-bg)',
+                  border: '1px solid var(--color-danger-border)',
+                  borderRadius: 'var(--radius-md)',
+                  color: 'var(--color-danger-text)',
+                  fontSize: 'var(--text-xs)',
+                }}
+              >
+                <AlertTriangle size={16} style={{ flexShrink: 0 }} />
+                <span>{resetError}</span>
+              </div>
+            )}
+
+            {/* New Password */}
+            <div className="form-group">
+              <label className="form-label" htmlFor="reset-officer-password">
+                New Password <span style={{ color: 'var(--color-danger)' }}>*</span>
+              </label>
+              <div style={{ position: 'relative' }}>
+                <Lock
+                  size={16}
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    padding: '0.75rem',
-                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                    border: '1px solid var(--color-danger)',
-                    borderRadius: 'var(--radius-md)',
-                    color: 'var(--color-danger)',
-                    fontSize: '0.875rem',
-                    marginBottom: '1rem',
+                    position: 'absolute',
+                    left: 'var(--space-3)',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    color: 'var(--color-text-muted)',
+                  }}
+                />
+                <input
+                  id="reset-officer-password"
+                  type={showResetPassword ? 'text' : 'password'}
+                  className="form-input"
+                  placeholder="Minimum 8 characters"
+                  value={resetNewPassword}
+                  onChange={(e) => setResetNewPassword(e.target.value)}
+                  required
+                  minLength={8}
+                  style={{ paddingLeft: '2.5rem', paddingRight: '2.5rem' }}
+                />
+                <button
+                  type="button"
+                  className="icon-btn icon-btn-sm"
+                  onClick={() => setShowResetPassword((prev) => !prev)}
+                  title={showResetPassword ? 'Hide password' : 'Show password'}
+                  style={{
+                    position: 'absolute',
+                    right: 'var(--space-2)',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
                   }}
                 >
-                  <AlertTriangle size={16} style={{ flexShrink: 0 }} />
-                  <span>{resetError}</span>
-                </div>
-              )}
-
-              {/* New Password */}
-              <div className="form-group" style={{ marginBottom: '1rem' }}>
-                <label className="form-label" htmlFor="reset-officer-password">
-                  New Password <span style={{ color: 'var(--color-danger)' }}>*</span>
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <Lock
-                    size={16}
-                    style={{
-                      position: 'absolute',
-                      left: '0.75rem',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      color: 'var(--color-text-muted)',
-                    }}
-                  />
-                  <input
-                    id="reset-officer-password"
-                    type={showResetPassword ? 'text' : 'password'}
-                    className="form-input"
-                    placeholder="Minimum 8 characters"
-                    value={resetNewPassword}
-                    onChange={(e) => setResetNewPassword(e.target.value)}
-                    required
-                    minLength={8}
-                    style={{ paddingLeft: '2.25rem', paddingRight: '2.5rem' }}
-                  />
-                  <button
-                    type="button"
-                    className="icon-btn icon-btn-sm"
-                    onClick={() => setShowResetPassword((prev) => !prev)}
-                    title={showResetPassword ? 'Hide password' : 'Show password'}
-                    style={{
-                      position: 'absolute',
-                      right: '0.5rem',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      color: 'var(--color-text-muted)',
-                    }}
-                  >
-                    {showResetPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.35rem' }}>
-                  Minimum 8 characters. Hashed via BCrypt before saving.
-                </div>
+                  {showResetPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
               </div>
-
-              {/* Confirm New Password */}
-              <div className="form-group" style={{ marginBottom: '1.25rem' }}>
-                <label className="form-label" htmlFor="reset-officer-confirm-password">
-                  Confirm New Password <span style={{ color: 'var(--color-danger)' }}>*</span>
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <Lock
-                    size={16}
-                    style={{
-                      position: 'absolute',
-                      left: '0.75rem',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      color: 'var(--color-text-muted)',
-                    }}
-                  />
-                  <input
-                    id="reset-officer-confirm-password"
-                    type={showResetPassword ? 'text' : 'password'}
-                    className="form-input"
-                    placeholder="Repeat new password"
-                    value={resetConfirmPassword}
-                    onChange={(e) => setResetConfirmPassword(e.target.value)}
-                    required
-                    minLength={8}
-                    style={{ paddingLeft: '2.25rem' }}
-                  />
-                </div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: '4px' }}>
+                Minimum 8 characters. Hashed via BCrypt before saving.
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setIsResetModalOpen(false)}
-                disabled={resetSubmitting}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={resetSubmitting}
-              >
-                {resetSubmitting ? (
-                  <>
-                    <RefreshCw size={15} className="spin" />
-                    <span>Resetting...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 size={15} />
-                    <span>Reset Password</span>
-                  </>
-                )}
-              </button>
+            {/* Confirm New Password */}
+            <div className="form-group">
+              <label className="form-label" htmlFor="reset-officer-confirm-password">
+                Confirm New Password <span style={{ color: 'var(--color-danger)' }}>*</span>
+              </label>
+              <div style={{ position: 'relative' }}>
+                <Lock
+                  size={16}
+                  style={{
+                    position: 'absolute',
+                    left: 'var(--space-3)',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    color: 'var(--color-text-muted)',
+                  }}
+                />
+                <input
+                  id="reset-officer-confirm-password"
+                  type={showResetPassword ? 'text' : 'password'}
+                  className="form-input"
+                  placeholder="Repeat new password"
+                  value={resetConfirmPassword}
+                  onChange={(e) => setResetConfirmPassword(e.target.value)}
+                  required
+                  minLength={8}
+                  style={{ paddingLeft: '2.5rem' }}
+                />
+              </div>
             </div>
-          </form>
-        </Modal>
-      )}
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

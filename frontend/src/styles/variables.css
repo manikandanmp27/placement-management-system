@@ -1,19 +1,29 @@
 :root {
-  /* Common Brand Colors */
+  /* Font Families */
   --font-family-base: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   --font-family-mono: 'JetBrains Mono', monospace;
 
   /* Typography Scale */
-  --font-size-xs: 0.75rem;     /* 12px */
-  --font-size-sm: 0.84375rem;  /* 13.5px */
-  --font-size-base: 0.9375rem; /* 15px */
-  --font-size-md: 1rem;        /* 16px */
-  --font-size-lg: 1.125rem;    /* 18px */
-  --font-size-xl: 1.25rem;     /* 20px */
-  --font-size-2xl: 1.5rem;     /* 24px */
-  --font-size-3xl: 1.875rem;   /* 30px */
+  --text-xs: 0.75rem;     /* 12px / 16px */
+  --text-sm: 0.875rem;    /* 14px / 20px */
+  --text-base: 1rem;       /* 16px / 24px */
+  --text-md: 1.125rem;    /* 18px / 28px */
+  --text-lg: 1.25rem;     /* 20px / 28px */
+  --text-xl: 1.5rem;      /* 24px / 32px */
+  --text-2xl: 1.875rem;   /* 30px / 36px */
+  --text-3xl: clamp(1.75rem, 1.4rem + 1.5vw, 2.25rem); /* 28-36px */
 
-  /* Spacing Scale */
+  /* Backward Compatibility Typography Aliases */
+  --font-size-xs: var(--text-xs);
+  --font-size-sm: var(--text-sm);
+  --font-size-base: var(--text-base);
+  --font-size-md: var(--text-md);
+  --font-size-lg: var(--text-lg);
+  --font-size-xl: var(--text-xl);
+  --font-size-2xl: var(--text-2xl);
+  --font-size-3xl: var(--text-2xl);
+
+  /* Spacing Scale (4px grid) */
   --space-1: 0.25rem;  /* 4px */
   --space-2: 0.5rem;   /* 8px */
   --space-3: 0.75rem;  /* 12px */
@@ -23,6 +33,7 @@
   --space-8: 2rem;     /* 32px */
   --space-10: 2.5rem;  /* 40px */
   --space-12: 3rem;    /* 48px */
+  --space-16: 4rem;    /* 64px */
 
   /* Border Radii */
   --radius-xs: 4px;
@@ -32,10 +43,18 @@
   --radius-xl: 16px;
   --radius-full: 9999px;
 
-  /* Transitions */
-  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-normal: 220ms cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-slow: 320ms cubic-bezier(0.4, 0, 0.2, 1);
+  /* Motion */
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 280ms;
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+
+  /* Backward Compatibility Transition Aliases */
+  --transition-fast: var(--duration-fast) var(--ease-standard);
+  --transition-normal: var(--duration-base) var(--ease-standard);
+  --transition-slow: var(--duration-slow) var(--ease-standard);
 
   /* Z-indices */
   --z-base: 1;
@@ -49,130 +68,234 @@
   --z-floating-theme: 9999;
 }
 
-/* Light Theme (Default) */
+/* ==========================================================================
+   WARM-BROWN LIGHT THEME (Default)
+   ========================================================================== */
 :root, [data-theme="light"] {
-  --color-page-bg: #F5F7FB;
-  --color-surface: #FFFFFF;
-  --color-surface-elevated: #FFFFFF;
-  --color-surface-hover: #F8FAFC;
-  --color-surface-active: #F1F5F9;
+  /* Brand: Walnut / Cocoa Brown & Caramel Accents */
+  --color-primary-50: #FAF5F0;
+  --color-primary-100: #F3E8DD;
+  --color-primary-200: #E5D0BC;
+  --color-primary-300: #D2B499;
+  --color-primary-500: #9C6239;
+  --color-primary-600: #743F1D;  /* Rich walnut / cocoa brown for primary actions */
+  --color-primary-700: #5D3014;  /* Deeper espresso brown for hover */
+  --color-primary-800: #48240D;  /* Pressed */
+  --color-primary-900: #331807;  /* Deep dark roasted brown banner base */
 
-  --color-text-primary: #172033;
-  --color-text-secondary: #667085;
-  --color-text-muted: #98A2B3;
+  /* Primary Action Aliases */
+  --color-primary: #743F1D;
+  --color-primary-hover: #5D3014;
+  --color-primary-active: #48240D;
+  --color-primary-subtle: #FAF5F0;
+  --color-primary-border: #E5D0BC;
+  --color-primary-dark: #331807;
+  --color-brand-link: #743F1D;
+
+  /* Surfaces & Canvas: Warm Ivory / Light Cream */
+  --color-page-bg: #FAF7F2;          /* Warm ivory / linen cream app canvas */
+  --color-surface: #FFFFFF;          /* Pure white / light-cream cards and tables */
+  --color-surface-elevated: #FFFFFF; /* Modals, dropdowns */
+  --color-surface-hover: #F3ECE2;    /* Soft warm beige hover */
+  --color-surface-active: #E9DFCFA;
+
+  /* Borders: Beige / Warm Taupe */
+  --color-border-subtle: #F0E8DC;
+  --color-border: #DFD5C6;           /* Card and table borders */
+  --color-border-strong: #C5B7A3;
+  --color-border-hover: #B6A690;
+
+  /* Typography: Deep Charcoal-Brown & Muted Taupe */
+  --color-text-primary: #261C14;     /* Deep charcoal-brown (high contrast) */
+  --color-text-secondary: #5A483C;   /* Warm taupe */
+  --color-text-muted: #7D685A;       /* Muted taupe helper / timestamps */
+  --color-text-disabled: #A8988B;
   --color-text-inverse: #FFFFFF;
 
-  --color-primary: #3B5BDB;
-  --color-primary-hover: #324fc2;
-  --color-primary-active: #2942a6;
-  --color-primary-subtle: #EEF2FF;
-  --color-primary-border: #D0DBFF;
+  /* Sidebar: Deep Espresso Roasted Brown */
+  --color-sidebar-bg: #231710;
+  --color-sidebar-border: #362419;
+  --color-sidebar-text: #FBF8F4;
+  --color-sidebar-text-muted: #A89587;
+  --color-sidebar-hover: rgba(255, 255, 255, 0.08);
+  --color-sidebar-active: #D4A373;        /* Caramel / bronze active navigation */
+  --color-sidebar-active-bg: rgba(212, 163, 115, 0.16);
+  --color-sidebar-active-accent: #D4A373;
 
-  --color-border: #E4E8F0;
-  --color-border-subtle: #EEF2F6;
-  --color-border-hover: #CBD5E1;
-
-  /* Sidebar styling (Refined Dark Navy for professional contrast) */
-  --color-sidebar-bg: #0F172A;
-  --color-sidebar-border: #1E293B;
-  --color-sidebar-text: #E2E8F0;
-  --color-sidebar-text-muted: #94A3B8;
-  --color-sidebar-hover: rgba(255, 255, 255, 0.07);
-  --color-sidebar-active: #3B5BDB;
-  --color-sidebar-active-bg: rgba(59, 91, 219, 0.16);
-
-  /* Semantic status colors */
+  /* Semantic Status Colors (Preserved distinct & accessible) */
   --color-success: #10B981;
   --color-success-bg: #ECFDF5;
   --color-success-border: #A7F3D0;
   --color-success-text: #065F46;
 
-  --color-warning: #F59E0B;
+  --color-warning: #D97706;
   --color-warning-bg: #FFFBEB;
   --color-warning-border: #FDE68A;
   --color-warning-text: #92400E;
 
-  --color-danger: #EF4444;
+  --color-danger: #DC2626;
+  --color-danger-hover: #B91C1C;
+  --color-danger-active: #991B1B;
   --color-danger-bg: #FEF2F2;
   --color-danger-border: #FECACA;
   --color-danger-text: #991B1B;
 
-  --color-info: #3B82F6;
+  --color-info: #2563EB;
   --color-info-bg: #EFF6FF;
   --color-info-border: #BFDBFE;
   --color-info-text: #1E40AF;
 
-  /* Shadows */
-  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
-  --shadow-sm: 0 1px 3px rgba(16, 24, 40, 0.08), 0 1px 2px rgba(16, 24, 40, 0.04);
-  --shadow-md: 0 4px 8px -2px rgba(16, 24, 40, 0.08), 0 2px 4px -2px rgba(16, 24, 40, 0.04);
-  --shadow-lg: 0 12px 16px -4px rgba(16, 24, 40, 0.08), 0 4px 6px -2px rgba(16, 24, 40, 0.03);
-  --shadow-xl: 0 20px 24px -4px rgba(16, 24, 40, 0.10), 0 8px 8px -4px rgba(16, 24, 40, 0.04);
-  --shadow-float: 0 10px 25px -5px rgba(59, 91, 219, 0.25), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  --color-neutral: #7D685A;
+  --color-neutral-bg: #F3ECE2;
+  --color-neutral-border: #DFD5C6;
+  --color-neutral-text: #5A483C;
 
-  --focus-ring: 0 0 0 3px rgba(59, 91, 219, 0.25);
+  /* Chart Palette */
+  --chart-1: #8B4E26;
+  --chart-success: #10B981;
+  --chart-warning: #D97706;
+  --chart-danger: #DC2626;
+  --chart-info: #2563EB;
+  --chart-neutral: #7D685A;
+  --chart-grid: #EADFCF;
+
+  /* Elevation Shadows (Warm toned) */
+  --shadow-0: none;
+  --shadow-1: 0 1px 3px rgba(38, 28, 20, 0.06);
+  --shadow-2: 0 4px 6px -1px rgba(38, 28, 20, 0.07), 0 2px 4px -2px rgba(38, 28, 20, 0.04);
+  --shadow-3: 0 10px 15px -3px rgba(38, 28, 20, 0.08), 0 4px 6px -4px rgba(38, 28, 20, 0.04);
+  --shadow-4: 0 20px 25px -5px rgba(38, 28, 20, 0.10), 0 8px 10px -6px rgba(38, 28, 20, 0.04);
+
+  /* Backward Compatibility Shadow Aliases */
+  --shadow-xs: var(--shadow-1);
+  --shadow-sm: var(--shadow-1);
+  --shadow-md: var(--shadow-2);
+  --shadow-lg: var(--shadow-3);
+  --shadow-xl: var(--shadow-4);
+  --shadow-float: 0 10px 25px -5px rgba(116, 63, 29, 0.25), 0 8px 10px -6px rgba(38, 28, 20, 0.1);
+
+  /* Double-Ring Focus State */
+  --focus-ring: 0 0 0 2px var(--color-page-bg), 0 0 0 4px var(--color-primary-500);
+
+  /* Defect Fallback Aliases */
+  --color-bg: var(--color-page-bg);
+  --color-bg-secondary: var(--color-surface-hover);
+  --color-bg-surface: var(--color-surface);
+  --color-bg-subtle: var(--color-surface-hover);
 }
 
-/* Dark Theme */
+/* ==========================================================================
+   WARM-BROWN DARK THEME
+   ========================================================================== */
 [data-theme="dark"] {
-  --color-page-bg: #0B1120;
-  --color-surface: #151F32;
-  --color-surface-elevated: #1B2940;
-  --color-surface-hover: #1E2C44;
-  --color-surface-active: #233452;
+  /* Brand: Caramel / Bronze Primary Actions & Active States */
+  --color-primary-50: #281B12;
+  --color-primary-100: #3D2718;
+  --color-primary-200: #543621;
+  --color-primary-300: #7A4F30;
+  --color-primary-500: #B87B4E;
+  --color-primary-600: #D28C57;  /* Warm caramel / bronze for dark mode actions */
+  --color-primary-700: #BE7844;  /* Hover */
+  --color-primary-800: #9C5E30;  /* Pressed */
+  --color-primary-900: #663C1D;
 
-  --color-text-primary: #F1F5F9;
-  --color-text-secondary: #A5B4C7;
-  --color-text-muted: #64748B;
-  --color-text-inverse: #0B1120;
+  /* Primary Action Aliases */
+  --color-primary: #D28C57;
+  --color-primary-hover: #DE9B68;
+  --color-primary-active: #BE7844;
+  --color-primary-subtle: rgba(210, 140, 87, 0.16);
+  --color-primary-border: #7A4F30;
+  --color-primary-dark: #9C5E30;
+  --color-brand-link: #E5AA7E;
 
-  --color-primary: #8BA4FF;
-  --color-primary-hover: #A3B7FF;
-  --color-primary-active: #7390F5;
-  --color-primary-subtle: rgba(139, 164, 255, 0.12);
-  --color-primary-border: rgba(139, 164, 255, 0.3);
+  /* Surfaces & Canvas: Deep Espresso & Brown-Charcoal */
+  --color-page-bg: #150F0B;          /* Deep espresso dark-brown page background */
+  --color-surface: #201712;          /* Slightly lighter brown-charcoal cards & surfaces */
+  --color-surface-elevated: #2A1F18; /* Elevated modals and dropdowns */
+  --color-surface-hover: #2C2019;    /* Hover surface */
+  --color-surface-active: #392A20;
 
-  --color-border: #2A3850;
-  --color-border-subtle: #1E2C42;
-  --color-border-hover: #3E4E6D;
+  /* Borders: Warm Taupe */
+  --color-border-subtle: #2A1E17;
+  --color-border: #3D2D22;           /* Warm taupe borders */
+  --color-border-strong: #574133;
+  --color-border-hover: #6E5341;
 
-  /* Sidebar styling */
-  --color-sidebar-bg: #0F172A;
-  --color-sidebar-border: #1E293B;
-  --color-sidebar-text: #F1F5F9;
-  --color-sidebar-text-muted: #A5B4C7;
+  /* Typography: Warm Off-White & Muted Beige */
+  --color-text-primary: #F8F3EC;     /* Warm off-white primary text */
+  --color-text-secondary: #D4C4B5;   /* Muted beige secondary text */
+  --color-text-muted: #A39080;       /* Muted taupe helper / timestamps */
+  --color-text-disabled: #68594E;
+  --color-text-inverse: #150F0B;
+
+  /* Sidebar */
+  --color-sidebar-bg: #100B08;       /* Deepest roasted espresso */
+  --color-sidebar-border: #261A13;
+  --color-sidebar-text: #F8F3EC;
+  --color-sidebar-text-muted: #A39080;
   --color-sidebar-hover: rgba(255, 255, 255, 0.06);
-  --color-sidebar-active: #8BA4FF;
-  --color-sidebar-active-bg: rgba(139, 164, 255, 0.16);
+  --color-sidebar-active: #D28C57;        /* Caramel / bronze active nav item */
+  --color-sidebar-active-bg: rgba(210, 140, 87, 0.18);
+  --color-sidebar-active-accent: #D28C57;
 
-  /* Semantic status colors (adapted for dark contrast) */
+  /* Semantic Status Colors (translucent dark backgrounds) */
   --color-success: #34D399;
   --color-success-bg: rgba(16, 185, 129, 0.14);
-  --color-success-border: rgba(52, 211, 153, 0.3);
+  --color-success-border: rgba(52, 211, 153, 0.30);
   --color-success-text: #6EE7B7;
 
   --color-warning: #FBBF24;
   --color-warning-bg: rgba(245, 158, 11, 0.14);
-  --color-warning-border: rgba(251, 191, 36, 0.3);
+  --color-warning-border: rgba(251, 191, 36, 0.30);
   --color-warning-text: #FCD34D;
 
-  --color-danger: #F87171;
+  --color-danger: #EF4444;
+  --color-danger-hover: #DC2626;
+  --color-danger-active: #B91C1C;
   --color-danger-bg: rgba(239, 68, 68, 0.14);
-  --color-danger-border: rgba(248, 113, 113, 0.3);
+  --color-danger-border: rgba(248, 113, 113, 0.30);
   --color-danger-text: #FCA5A5;
 
   --color-info: #60A5FA;
-  --color-info-bg: rgba(96, 165, 250, 0.14);
-  --color-info-border: rgba(96, 165, 250, 0.3);
+  --color-info-bg: rgba(59, 130, 246, 0.14);
+  --color-info-border: rgba(96, 165, 250, 0.30);
   --color-info-text: #93C5FD;
 
-  /* Shadows in dark mode */
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.2);
-  --shadow-md: 0 4px 8px -2px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 12px 20px -4px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
-  --shadow-xl: 0 20px 28px -4px rgba(0, 0, 0, 0.6), 0 8px 8px -4px rgba(0, 0, 0, 0.4);
-  --shadow-float: 0 10px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 12px -4px rgba(139, 164, 255, 0.2);
+  --color-neutral: #A39080;
+  --color-neutral-bg: rgba(163, 144, 128, 0.14);
+  --color-neutral-border: rgba(163, 144, 128, 0.25);
+  --color-neutral-text: #D4C4B5;
 
-  --focus-ring: 0 0 0 3px rgba(139, 164, 255, 0.35);
+  /* Chart Palette */
+  --chart-1: #D28C57;
+  --chart-success: #34D399;
+  --chart-warning: #FBBF24;
+  --chart-danger: #F87171;
+  --chart-info: #60A5FA;
+  --chart-neutral: #A39080;
+  --chart-grid: #2A1E17;
+
+  /* Elevation in Dark Mode */
+  --shadow-0: none;
+  --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 4px 8px -2px rgba(0, 0, 0, 0.5), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+  --shadow-3: 0 10px 18px -3px rgba(0, 0, 0, 0.6), 0 4px 6px -2px rgba(0, 0, 0, 0.4);
+  --shadow-4: 0 20px 28px -4px rgba(0, 0, 0, 0.7), 0 8px 8px -4px rgba(0, 0, 0, 0.5);
+
+  /* Backward Compatibility Shadow Aliases */
+  --shadow-xs: var(--shadow-1);
+  --shadow-sm: var(--shadow-1);
+  --shadow-md: var(--shadow-2);
+  --shadow-lg: var(--shadow-3);
+  --shadow-xl: var(--shadow-4);
+  --shadow-float: 0 10px 25px -5px rgba(0, 0, 0, 0.7), 0 8px 12px -4px rgba(210, 140, 87, 0.25);
+
+  /* Focus Ring */
+  --focus-ring: 0 0 0 2px var(--color-page-bg), 0 0 0 4px var(--color-primary-500);
+
+  /* Defect Fallback Aliases */
+  --color-bg: var(--color-page-bg);
+  --color-bg-secondary: var(--color-surface-hover);
+  --color-bg-surface: var(--color-surface);
+  --color-bg-subtle: var(--color-surface-hover);
 }

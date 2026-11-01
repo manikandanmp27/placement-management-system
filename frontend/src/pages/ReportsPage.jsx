@@ -4,7 +4,6 @@ import {
   UserX,
   Briefcase,
   CalendarCheck,
-  Search,
   RefreshCw,
   Download,
   Building,
@@ -14,23 +13,20 @@ import {
   ArrowUpDown,
   Building2,
   CheckCircle2,
+  TrendingUp,
 } from 'lucide-react';
 
 import { reportsApi } from '../api/reports';
 import { useToast } from '../contexts/ToastContext';
 
 import MetricCard from '../components/common/MetricCard';
-import { Card, CardHeader, CardBody } from '../components/common/Card';
 import Button from '../components/common/Button';
+import SearchInput from '../components/common/SearchInput';
+import StatusBadge, { CategoryTag } from '../components/common/StatusBadge';
 import EmptyState from '../components/common/EmptyState';
 import ErrorState from '../components/common/ErrorState';
 import { SkeletonTable, SkeletonMetricsGrid } from '../components/common/LoadingSkeleton';
-
-function formatLPA(val) {
-  if (val === null || val === undefined) return '—';
-  const num = Number(val);
-  return isNaN(num) ? '—' : `₹${num.toFixed(1)} LPA`;
-}
+import { formatSalary, formatDate } from '../utils/formatters';
 
 export function ReportsPage() {
   const toast = useToast();
@@ -61,6 +57,7 @@ export function ReportsPage() {
   const [interviewStageFilter, setInterviewStageFilter] = useState('ALL');
 
   const [error, setError] = useState(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   // Load summary metrics
   const loadSummary = useCallback(async () => {
@@ -203,6 +200,17 @@ export function ReportsPage() {
     return result;
   }, [jobsRanked, jobsSearch, jobsSort]);
 
+  // Max applicant count for inline bar scaling
+  const maxApplicants = useMemo(() => {
+    return jobsRanked.reduce((max, j) => Math.max(max, j.applicantCount || 0), 1);
+  }, [jobsRanked]);
+
+  // Top in-demand job calculation
+  const topJob = useMemo(() => {
+    if (jobsRanked.length === 0) return null;
+    return [...jobsRanked].sort((a, b) => (b.applicantCount || 0) - (a.applicantCount || 0))[0];
+  }, [jobsRanked]);
+
   // Filtered Tab 3: Students in interview process
   const filteredInterviews = useMemo(() => {
     return interviewStudents.filter((row) => {
@@ -229,140 +237,170 @@ export function ReportsPage() {
     });
   }, [interviewStudents, interviewSearch, interviewStageFilter]);
 
-  // Export current tab to CSV
-  const handleExportCSV = () => {
-    let headers = [];
-    let rows = [];
-    let filename = `placement_report_${activeTab}_${new Date().toISOString().split('T')[0]}.csv`;
+  // Export active tab to CSV with >=300ms feedback
+  const handleExportCSV = async () => {
+    setIsExporting(true);
 
-    if (activeTab === 'unapplied') {
-      headers = ['Student ID', 'Name', 'Email', 'Department', 'CGPA', 'Backlogs', 'Placement Status', 'Archived'];
-      rows = filteredUnapplied.map((s) => [
-        s.studentId,
-        `"${(s.name || '').replace(/"/g, '""')}"`,
-        `"${(s.email || '').replace(/"/g, '""')}"`,
-        `"${(s.departmentName || '').replace(/"/g, '""')}"`,
-        s.cgpa || '',
-        s.backlogs ?? '',
-        s.placementStatus || '',
-        s.isArchived ? 'Yes' : 'No',
-      ]);
-    } else if (activeTab === 'jobs') {
-      headers = ['Rank', 'Job ID', 'Job Title', 'Company', 'Job Type', 'Package (LPA)', 'Deadline', 'Min CGPA', 'Max Backlogs', 'Applicants Count'];
-      rows = filteredJobs.map((j, idx) => [
-        idx + 1,
-        j.jobId,
-        `"${(j.jobTitle || '').replace(/"/g, '""')}"`,
-        `"${(j.companyName || '').replace(/"/g, '""')}"`,
-        `"${(j.jobType || '').replace(/"/g, '""')}"`,
-        j.packageAmount || '',
-        j.deadline || '',
-        j.minCgpa || '',
-        j.maxBacklogs ?? '',
-        j.applicantCount ?? 0,
-      ]);
-    } else if (activeTab === 'interviewing') {
-      headers = ['Student ID', 'Student Name', 'Department', 'Job Title', 'Company', 'Application Status', 'Round Number', 'Round Type', 'Interview Date', 'Result'];
-      rows = filteredInterviews.map((r) => [
-        r.studentId,
-        `"${(r.studentName || '').replace(/"/g, '""')}"`,
-        `"${(r.departmentName || '').replace(/"/g, '""')}"`,
-        `"${(r.jobTitle || '').replace(/"/g, '""')}"`,
-        `"${(r.companyName || '').replace(/"/g, '""')}"`,
-        r.applicationStatus || '',
-        r.roundNumber ?? '',
-        `"${(r.roundType || 'Awaiting Scheduling').replace(/"/g, '""')}"`,
-        r.interviewDate || '',
-        r.interviewResult || 'Pending Schedule',
-      ]);
+    try {
+      let headers = [];
+      let rows = [];
+      let filename = `placement_report_${activeTab}_${new Date().toISOString().split('T')[0]}.csv`;
+
+      if (activeTab === 'unapplied') {
+        headers = ['Student ID', 'Name', 'Email', 'Department', 'CGPA', 'Backlogs', 'Placement Status', 'Archived'];
+        rows = filteredUnapplied.map((s) => [
+          s.studentId,
+          `"${(s.name || '').replace(/"/g, '""')}"`,
+          `"${(s.email || '').replace(/"/g, '""')}"`,
+          `"${(s.departmentName || '').replace(/"/g, '""')}"`,
+          s.cgpa != null ? Number(s.cgpa).toFixed(2) : '',
+          s.backlogs ?? '',
+          s.placementStatus || '',
+          s.isArchived ? 'Yes' : 'No',
+        ]);
+      } else if (activeTab === 'jobs') {
+        headers = ['Rank', 'Job ID', 'Job Title', 'Company', 'Job Type', 'Package (INR)', 'Deadline', 'Min CGPA', 'Max Backlogs', 'Applicants Count'];
+        rows = filteredJobs.map((j, idx) => [
+          idx + 1,
+          j.jobId,
+          `"${(j.jobTitle || '').replace(/"/g, '""')}"`,
+          `"${(j.companyName || '').replace(/"/g, '""')}"`,
+          `"${(j.jobType || '').replace(/"/g, '""')}"`,
+          j.packageAmount || '',
+          j.deadline || '',
+          j.minCgpa ?? '',
+          j.maxBacklogs ?? '',
+          j.applicantCount ?? 0,
+        ]);
+      } else if (activeTab === 'interviewing') {
+        headers = ['Student ID', 'Student Name', 'Department', 'Job Title', 'Company', 'Application Status', 'Round Number', 'Round Type', 'Interview Date', 'Result'];
+        rows = filteredInterviews.map((r) => [
+          r.studentId,
+          `"${(r.studentName || '').replace(/"/g, '""')}"`,
+          `"${(r.departmentName || '').replace(/"/g, '""')}"`,
+          `"${(r.jobTitle || '').replace(/"/g, '""')}"`,
+          `"${(r.companyName || '').replace(/"/g, '""')}"`,
+          r.applicationStatus || '',
+          r.roundNumber ?? '',
+          `"${(r.roundType || 'Awaiting Scheduling').replace(/"/g, '""')}"`,
+          r.interviewDate || '',
+          r.interviewResult || 'Pending Schedule',
+        ]);
+      }
+
+      if (rows.length === 0) {
+        toast.warning('No records available to export in this view.');
+        setIsExporting(false);
+        return;
+      }
+
+      // Minimum 300ms spinner feedback per specification
+      await new Promise((resolve) => setTimeout(resolve, 350));
+
+      const csvContent = [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast.success(`CSV downloaded: ${filename}`);
+    } catch (err) {
+      console.error('Failed to export CSV:', err);
+      toast.error('Failed to generate CSV export.');
+    } finally {
+      setIsExporting(false);
     }
-
-    if (rows.length === 0) {
-      toast.error('No rows available to export.');
-      return;
-    }
-
-    const csvContent = [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success(`Exported ${rows.length} record(s) to ${filename}`);
   };
+
+  const activeTabName = {
+    unapplied: 'Unapplied Students',
+    jobs: 'Job Demand Rankings',
+    interviewing: 'Interview Pipeline',
+  }[activeTab];
 
   return (
     <div className="page-container">
-      {/* Top Header / Action Bar */}
-      <div className="page-header" style={{ marginBottom: '1.5rem' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-            <FileBarChart size={24} style={{ color: 'var(--color-primary)' }} />
-            <h1 className="page-title" style={{ margin: 0 }}>Placement Reports & Pipeline Analytics</h1>
-          </div>
-          <p className="page-subtitle" style={{ margin: 0 }}>
-            Official university placement reports covering candidate engagement, applicant demand, and active interview progress.
+      {/* Page Header */}
+      <div className="page-header">
+        <div className="page-header-content">
+          <h1 className="page-title">Reports</h1>
+          <p className="page-subtitle">
+            Comprehensive placement reporting: unapplied student roster, corporate demand rankings, and interview pipelines.
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <Button variant="secondary" icon={RefreshCw} onClick={handleRefreshAll}>
-            Refresh Reports
-          </Button>
-          <Button variant="primary" icon={Download} onClick={handleExportCSV}>
-            Export to CSV
+        <div className="page-header-actions">
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={handleRefreshAll}
+            title="Refresh reports"
+          >
+            <RefreshCw size={16} />
+            <span>Refresh</span>
+          </button>
+
+          <Button
+            variant="primary"
+            icon={Download}
+            onClick={handleExportCSV}
+            isLoading={isExporting}
+            id="btn-export-csv"
+            title={`Export ${activeTabName} to CSV`}
+          >
+            Export CSV ({activeTabName})
           </Button>
         </div>
       </div>
 
-      {/* Summary Metrics */}
+      {/* Overview Strip (3 inline metrics) */}
       {loadingSummary && !summary ? (
-        <SkeletonMetricsGrid count={4} />
+        <SkeletonMetricsGrid count={3} />
       ) : (
-        <div className="metrics-grid" style={{ marginBottom: '2rem' }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+            gap: 'var(--space-4)',
+          }}
+        >
           <MetricCard
-            title="Unapplied Students"
+            title="Total Unapplied"
             value={summary ? summary.unappliedStudentsCount : '—'}
-            subtitle="Registered candidates with 0 submissions"
+            subtitle="Registered candidates with 0 drive submissions"
             icon={UserX}
             variant={summary && summary.unappliedStudentsCount > 0 ? 'warning' : 'success'}
           />
           <MetricCard
-            title="Active Interview Pipeline"
-            value={summary ? summary.activeInterviewPipelineCount : '—'}
-            subtitle="Candidates in shortlisting or pending rounds"
-            icon={CalendarCheck}
+            title="Top In-Demand Job"
+            value={topJob ? `${topJob.applicantCount} Applicants` : '—'}
+            subtitle={topJob ? `${topJob.jobTitle} @ ${topJob.companyName}` : 'No active applications'}
+            icon={Briefcase}
             variant="primary"
           />
           <MetricCard
-            title="Active Job Openings"
-            value={summary ? summary.totalJobs : '—'}
-            subtitle="Recruitment drives published on portal"
-            icon={Briefcase}
-            variant="default"
-          />
-          <MetricCard
-            title="Total Applications"
-            value={summary ? summary.totalApplications : '—'}
-            subtitle="Drive submissions across all companies"
-            icon={Award}
+            title="Candidates in Pipeline"
+            value={summary ? summary.activeInterviewPipelineCount : '—'}
+            subtitle="Candidates in shortlisting or pending rounds"
+            icon={CalendarCheck}
             variant="default"
           />
         </div>
       )}
 
-      {/* Navigation Tabs */}
+      {/* Underline Tabs */}
       <div
         style={{
           display: 'flex',
-          gap: '0.5rem',
+          gap: 'var(--space-2)',
           borderBottom: '1px solid var(--color-border)',
-          marginBottom: '1.5rem',
           overflowX: 'auto',
-          paddingBottom: '0.25rem',
+          marginTop: 'var(--space-2)',
         }}
       >
         <button
@@ -371,24 +409,32 @@ export function ReportsPage() {
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem',
-            padding: '0.75rem 1.25rem',
-            borderRadius: 'var(--radius-md) var(--radius-md) 0 0',
+            gap: 'var(--space-2)',
+            padding: 'var(--space-3) var(--space-4)',
+            fontSize: 'var(--text-sm)',
             fontWeight: 600,
-            fontSize: '0.875rem',
             border: 'none',
+            background: 'none',
             cursor: 'pointer',
-            backgroundColor: activeTab === 'unapplied' ? 'var(--color-bg-surface)' : 'transparent',
-            color: activeTab === 'unapplied' ? 'var(--color-primary)' : 'var(--color-text-muted)',
-            borderBottom: activeTab === 'unapplied' ? '2px solid var(--color-primary)' : '2px solid transparent',
-            transition: 'all var(--transition-fast)',
+            color: activeTab === 'unapplied' ? 'var(--color-primary-600)' : 'var(--color-text-secondary)',
+            borderBottom: activeTab === 'unapplied' ? '2px solid var(--color-primary-600)' : '2px solid transparent',
+            marginBottom: '-1px',
+            whiteSpace: 'nowrap',
+            transition: 'all var(--duration-fast)',
           }}
         >
           <UserX size={16} />
-          <span>Students with No Applications</span>
+          <span>Unapplied Students</span>
           <span
-            className="badge badge-warning"
-            style={{ fontSize: '0.75rem', padding: '0.15rem 0.45rem' }}
+            style={{
+              padding: '1px 8px',
+              borderRadius: 'var(--radius-full)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 700,
+              fontVariantNumeric: 'tabular-nums',
+              backgroundColor: activeTab === 'unapplied' ? 'var(--color-primary-100)' : 'var(--color-surface-hover)',
+              color: activeTab === 'unapplied' ? 'var(--color-primary-700)' : 'var(--color-text-muted)',
+            }}
           >
             {unappliedStudents.length}
           </span>
@@ -400,24 +446,32 @@ export function ReportsPage() {
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem',
-            padding: '0.75rem 1.25rem',
-            borderRadius: 'var(--radius-md) var(--radius-md) 0 0',
+            gap: 'var(--space-2)',
+            padding: 'var(--space-3) var(--space-4)',
+            fontSize: 'var(--text-sm)',
             fontWeight: 600,
-            fontSize: '0.875rem',
             border: 'none',
+            background: 'none',
             cursor: 'pointer',
-            backgroundColor: activeTab === 'jobs' ? 'var(--color-bg-surface)' : 'transparent',
-            color: activeTab === 'jobs' ? 'var(--color-primary)' : 'var(--color-text-muted)',
-            borderBottom: activeTab === 'jobs' ? '2px solid var(--color-primary)' : '2px solid transparent',
-            transition: 'all var(--transition-fast)',
+            color: activeTab === 'jobs' ? 'var(--color-primary-600)' : 'var(--color-text-secondary)',
+            borderBottom: activeTab === 'jobs' ? '2px solid var(--color-primary-600)' : '2px solid transparent',
+            marginBottom: '-1px',
+            whiteSpace: 'nowrap',
+            transition: 'all var(--duration-fast)',
           }}
         >
           <Briefcase size={16} />
           <span>Jobs Ranked by Applicants</span>
           <span
-            className="badge badge-info"
-            style={{ fontSize: '0.75rem', padding: '0.15rem 0.45rem' }}
+            style={{
+              padding: '1px 8px',
+              borderRadius: 'var(--radius-full)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 700,
+              fontVariantNumeric: 'tabular-nums',
+              backgroundColor: activeTab === 'jobs' ? 'var(--color-primary-100)' : 'var(--color-surface-hover)',
+              color: activeTab === 'jobs' ? 'var(--color-primary-700)' : 'var(--color-text-muted)',
+            }}
           >
             {jobsRanked.length}
           </span>
@@ -429,24 +483,32 @@ export function ReportsPage() {
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem',
-            padding: '0.75rem 1.25rem',
-            borderRadius: 'var(--radius-md) var(--radius-md) 0 0',
+            gap: 'var(--space-2)',
+            padding: 'var(--space-3) var(--space-4)',
+            fontSize: 'var(--text-sm)',
             fontWeight: 600,
-            fontSize: '0.875rem',
             border: 'none',
+            background: 'none',
             cursor: 'pointer',
-            backgroundColor: activeTab === 'interviewing' ? 'var(--color-bg-surface)' : 'transparent',
-            color: activeTab === 'interviewing' ? 'var(--color-primary)' : 'var(--color-text-muted)',
-            borderBottom: activeTab === 'interviewing' ? '2px solid var(--color-primary)' : '2px solid transparent',
-            transition: 'all var(--transition-fast)',
+            color: activeTab === 'interviewing' ? 'var(--color-primary-600)' : 'var(--color-text-secondary)',
+            borderBottom: activeTab === 'interviewing' ? '2px solid var(--color-primary-600)' : '2px solid transparent',
+            marginBottom: '-1px',
+            whiteSpace: 'nowrap',
+            transition: 'all var(--duration-fast)',
           }}
         >
           <CalendarCheck size={16} />
-          <span>Students in Interview Process</span>
+          <span>Interview Pipeline</span>
           <span
-            className="badge badge-success"
-            style={{ fontSize: '0.75rem', padding: '0.15rem 0.45rem' }}
+            style={{
+              padding: '1px 8px',
+              borderRadius: 'var(--radius-full)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 700,
+              fontVariantNumeric: 'tabular-nums',
+              backgroundColor: activeTab === 'interviewing' ? 'var(--color-primary-100)' : 'var(--color-surface-hover)',
+              color: activeTab === 'interviewing' ? 'var(--color-primary-700)' : 'var(--color-text-muted)',
+            }}
           >
             {interviewStudents.length}
           </span>
@@ -455,450 +517,469 @@ export function ReportsPage() {
 
       {/* Global Error Banner */}
       {error && (
-        <div style={{ marginBottom: '1.5rem' }}>
-          <ErrorState message={error} onRetry={handleRefreshAll} />
+        <ErrorState message={error} onRetry={handleRefreshAll} />
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 1: Unapplied Students                                                 */}
+      {/* ========================================================================= */}
+      {activeTab === 'unapplied' && (
+        <div className="card">
+          {/* Tab Toolbar */}
+          <div
+            style={{
+              padding: 'var(--space-4)',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 'var(--space-3)',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              borderBottom: '1px solid var(--color-border)',
+            }}
+          >
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', alignItems: 'center', flex: 1 }}>
+              <div style={{ minWidth: '220px', maxWidth: '360px', flex: 1 }}>
+                <SearchInput
+                  placeholder="Search name, ID, department..."
+                  value={unappliedSearch}
+                  onChange={setUnappliedSearch}
+                />
+              </div>
+
+              <div style={{ minWidth: '180px' }}>
+                <select
+                  className="form-select"
+                  value={unappliedSort}
+                  onChange={(e) => setUnappliedSort(e.target.value)}
+                  aria-label="Sort unapplied students"
+                >
+                  <option value="id-asc">Student ID (Ascending)</option>
+                  <option value="id-desc">Student ID (Descending)</option>
+                  <option value="cgpa-desc">Highest CGPA</option>
+                  <option value="cgpa-asc">Lowest CGPA</option>
+                  <option value="name-asc">Student Name (A–Z)</option>
+                </select>
+              </div>
+
+              {/* Include Archived Real Toggle Switch (role="switch") */}
+              <label
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 500,
+                  color: 'var(--color-text-secondary)',
+                  cursor: 'pointer',
+                  userSelect: 'none',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  role="switch"
+                  checked={includeArchived}
+                  onChange={(e) => setIncludeArchived(e.target.checked)}
+                  style={{
+                    width: 32,
+                    height: 18,
+                    cursor: 'pointer',
+                    accentColor: 'var(--color-primary-600)',
+                  }}
+                />
+                <span>Include Archived</span>
+              </label>
+            </div>
+
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+              Showing <strong style={{ color: 'var(--color-text-primary)' }}>{filteredUnapplied.length}</strong> unapplied
+            </div>
+          </div>
+
+          {/* Table Content */}
+          {loadingUnapplied ? (
+            <SkeletonTable rows={6} cols={6} />
+          ) : filteredUnapplied.length === 0 ? (
+            <EmptyState
+              icon={CheckCircle2}
+              title="Every active student has applied!"
+              description={
+                unappliedSearch
+                  ? 'No unapplied students match your search criteria.'
+                  : 'Every active student in the university roster has applied to at least one campus recruitment drive.'
+              }
+            />
+          ) : (
+            <div className="table-responsive">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th style={{ minWidth: '220px' }}>Student</th>
+                    <th style={{ width: '160px' }}>Department</th>
+                    <th className="col-numeric" style={{ textAlign: 'right', width: '90px' }}>CGPA</th>
+                    <th className="col-numeric" style={{ textAlign: 'right', width: '90px' }}>Backlogs</th>
+                    <th className="col-status" style={{ width: '140px', textAlign: 'center' }}>Placement Status</th>
+                    <th className="col-status" style={{ width: '110px', textAlign: 'center' }}>Roster</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredUnapplied.map((student) => (
+                    <tr key={student.studentId}>
+                      <td style={{ minWidth: '220px' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                          {student.name}
+                        </div>
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>
+                          #{student.studentId} • {student.email}
+                        </div>
+                      </td>
+                      <td style={{ width: '160px' }}>
+                        <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>
+                          {student.departmentName || '—'}
+                        </span>
+                      </td>
+                      <td className="col-numeric" style={{ width: '90px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                        {student.cgpa != null ? Number(student.cgpa).toFixed(2) : '—'}
+                      </td>
+                      <td className="col-numeric" style={{ width: '90px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                        {student.backlogs > 0 ? (
+                          <span style={{ color: 'var(--color-danger)', fontWeight: 600 }}>
+                            {student.backlogs}
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--color-text-muted)' }}>0</span>
+                        )}
+                      </td>
+                      <td className="col-status" style={{ width: '140px', textAlign: 'center' }}>
+                        <StatusBadge status={student.placementStatus || 'NOT_PLACED'} />
+                      </td>
+                      <td className="col-status" style={{ width: '110px', textAlign: 'center' }}>
+                        {student.isArchived ? (
+                          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-warning)', fontWeight: 600 }}>
+                            Archived
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-success)', fontWeight: 500 }}>
+                            Active
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 1: Students with No Applications                                      */}
-      {/* ========================================================================= */}
-      {activeTab === 'unapplied' && (
-        <Card>
-          <CardHeader>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', width: '100%' }}>
-              <div>
-                <h2 style={{ fontSize: '1.125rem', fontWeight: 600, margin: 0 }}>Unapplied Student Roster</h2>
-                <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', margin: 0 }}>
-                  Candidates who have not yet submitted an application to any campus recruitment drive.
-                </p>
-              </div>
-
-              {/* Controls */}
-              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                <div className="search-bar" style={{ minWidth: '220px' }}>
-                  <Search size={16} className="search-icon" />
-                  <input
-                    type="text"
-                    placeholder="Search name, ID, dept..."
-                    value={unappliedSearch}
-                    onChange={(e) => setUnappliedSearch(e.target.value)}
-                    className="form-control form-control-sm"
-                  />
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                  <ArrowUpDown size={14} style={{ color: 'var(--color-text-muted)' }} />
-                  <select
-                    className="form-control form-control-sm"
-                    value={unappliedSort}
-                    onChange={(e) => setUnappliedSort(e.target.value)}
-                    style={{ minWidth: '140px' }}
-                  >
-                    <option value="id-asc">Sort: Student ID (Asc)</option>
-                    <option value="id-desc">Sort: Student ID (Desc)</option>
-                    <option value="cgpa-desc">Sort: Highest CGPA</option>
-                    <option value="cgpa-asc">Sort: Lowest CGPA</option>
-                    <option value="name-asc">Sort: Name (A–Z)</option>
-                  </select>
-                </div>
-
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8125rem', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={includeArchived}
-                    onChange={(e) => setIncludeArchived(e.target.checked)}
-                  />
-                  <span>Include Archived</span>
-                </label>
-              </div>
-            </div>
-          </CardHeader>
-
-          <CardBody style={{ padding: 0 }}>
-            {loadingUnapplied ? (
-              <div style={{ padding: '1.5rem' }}>
-                <SkeletonTable rows={5} columns={6} />
-              </div>
-            ) : filteredUnapplied.length === 0 ? (
-              <EmptyState
-                icon={CheckCircle2}
-                title="100% Student Engagement!"
-                description={
-                  unappliedSearch
-                    ? 'No unapplied students match your search criteria.'
-                    : 'Every student in the roster has applied to at least one recruitment drive.'
-                }
-              />
-            ) : (
-              <div className="table-responsive">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th style={{ width: '100px' }}>ID</th>
-                      <th>Candidate Details</th>
-                      <th>Department</th>
-                      <th style={{ width: '90px' }}>CGPA</th>
-                      <th style={{ width: '90px' }}>Backlogs</th>
-                      <th style={{ width: '140px' }}>Status</th>
-                      <th style={{ width: '120px' }}>Roster</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredUnapplied.map((student) => (
-                      <tr key={student.studentId}>
-                        <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>#{student.studentId}</td>
-                        <td>
-                          <div style={{ fontWeight: 600 }}>{student.name}</div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                            {student.email}
-                          </div>
-                        </td>
-                        <td>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                            <Building size={14} style={{ color: 'var(--color-primary)' }} />
-                            <span>{student.departmentName || '—'}</span>
-                          </span>
-                        </td>
-                        <td>
-                          <span style={{ fontWeight: 600 }}>{student.cgpa != null ? Number(student.cgpa).toFixed(2) : '—'}</span>
-                        </td>
-                        <td>
-                          <span
-                            className={student.backlogs > 0 ? 'badge badge-danger' : 'badge badge-secondary'}
-                            style={{ fontSize: '0.75rem' }}
-                          >
-                            {student.backlogs ?? 0}
-                          </span>
-                        </td>
-                        <td>
-                          <span
-                            className={
-                              student.placementStatus === 'PLACED'
-                                ? 'badge badge-success'
-                                : 'badge badge-secondary'
-                            }
-                            style={{ fontSize: '0.75rem' }}
-                          >
-                            {student.placementStatus || 'NOT_PLACED'}
-                          </span>
-                        </td>
-                        <td>
-                          {student.isArchived ? (
-                            <span className="badge badge-warning" style={{ fontSize: '0.75rem' }}>
-                              Archived
-                            </span>
-                          ) : (
-                            <span className="badge badge-success" style={{ fontSize: '0.75rem' }}>
-                              Active
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardBody>
-        </Card>
-      )}
-
-      {/* ========================================================================= */}
-      {/* TAB 2: Jobs Ranked by Applicant Count                                     */}
+      {/* TAB 2: Jobs Ranked by Applicants                                          */}
       {/* ========================================================================= */}
       {activeTab === 'jobs' && (
-        <Card>
-          <CardHeader>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', width: '100%' }}>
-              <div>
-                <h2 style={{ fontSize: '1.125rem', fontWeight: 600, margin: 0 }}>Recruitment Demand Rankings</h2>
-                <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', margin: 0 }}>
-                  Active job openings ordered by applicant submission volume (highest demand to lowest).
-                </p>
+        <div className="card">
+          {/* Tab Toolbar */}
+          <div
+            style={{
+              padding: 'var(--space-4)',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 'var(--space-3)',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              borderBottom: '1px solid var(--color-border)',
+            }}
+          >
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', alignItems: 'center', flex: 1 }}>
+              <div style={{ minWidth: '220px', maxWidth: '360px', flex: 1 }}>
+                <SearchInput
+                  placeholder="Search title, company, role..."
+                  value={jobsSearch}
+                  onChange={setJobsSearch}
+                />
               </div>
 
-              {/* Controls */}
-              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                <div className="search-bar" style={{ minWidth: '220px' }}>
-                  <Search size={16} className="search-icon" />
-                  <input
-                    type="text"
-                    placeholder="Search title, company, type..."
-                    value={jobsSearch}
-                    onChange={(e) => setJobsSearch(e.target.value)}
-                    className="form-control form-control-sm"
-                  />
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                  <ArrowUpDown size={14} style={{ color: 'var(--color-text-muted)' }} />
-                  <select
-                    className="form-control form-control-sm"
-                    value={jobsSort}
-                    onChange={(e) => setJobsSort(e.target.value)}
-                    style={{ minWidth: '170px' }}
-                  >
-                    <option value="applicants-desc">Sort: Applicants (Highest)</option>
-                    <option value="applicants-asc">Sort: Applicants (Lowest)</option>
-                    <option value="package-desc">Sort: Package (Highest)</option>
-                    <option value="deadline-asc">Sort: Deadline (Earliest)</option>
-                    <option value="title-asc">Sort: Job Title (A–Z)</option>
-                  </select>
-                </div>
+              <div style={{ minWidth: '180px' }}>
+                <select
+                  className="form-select"
+                  value={jobsSort}
+                  onChange={(e) => setJobsSort(e.target.value)}
+                  aria-label="Sort job openings"
+                >
+                  <option value="applicants-desc">Applicants (Highest first)</option>
+                  <option value="applicants-asc">Applicants (Lowest first)</option>
+                  <option value="package-desc">Package (Highest first)</option>
+                  <option value="deadline-asc">Deadline (Earliest)</option>
+                  <option value="title-asc">Job Title (A–Z)</option>
+                </select>
               </div>
             </div>
-          </CardHeader>
 
-          <CardBody style={{ padding: 0 }}>
-            {loadingJobs ? (
-              <div style={{ padding: '1.5rem' }}>
-                <SkeletonTable rows={5} columns={6} />
-              </div>
-            ) : filteredJobs.length === 0 ? (
-              <EmptyState
-                icon={Briefcase}
-                title="No Job Postings Found"
-                description={
-                  jobsSearch
-                    ? 'No job openings match your search filter.'
-                    : 'No job listings have been created yet.'
-                }
-              />
-            ) : (
-              <div className="table-responsive">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th style={{ width: '60px' }}>Rank</th>
-                      <th>Job Opportunity</th>
-                      <th>Corporate Partner</th>
-                      <th style={{ width: '130px' }}>Package</th>
-                      <th style={{ width: '130px' }}>Deadline</th>
-                      <th style={{ width: '150px' }}>Criteria</th>
-                      <th style={{ width: '140px', textAlign: 'right' }}>Total Applicants</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredJobs.map((job, idx) => (
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+              Showing <strong style={{ color: 'var(--color-text-primary)' }}>{filteredJobs.length}</strong> openings
+            </div>
+          </div>
+
+          {/* Table Content */}
+          {loadingJobs ? (
+            <SkeletonTable rows={6} cols={6} />
+          ) : filteredJobs.length === 0 ? (
+            <EmptyState
+              icon={Briefcase}
+              title="No Job Postings Found"
+              description={
+                jobsSearch
+                  ? 'No job openings match your search filter.'
+                  : 'No corporate recruitment drives are registered in the system.'
+              }
+            />
+          ) : (
+            <div className="table-responsive">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: '60px', textAlign: 'center' }}>Rank</th>
+                    <th style={{ minWidth: '220px' }}>Job Opportunity</th>
+                    <th className="col-numeric" style={{ width: '130px', textAlign: 'right' }}>Package (CTC)</th>
+                    <th className="col-date" style={{ width: '130px' }}>Deadline</th>
+                    <th style={{ width: '150px' }}>Eligibility</th>
+                    <th style={{ width: '220px' }}>Applicants Demand</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredJobs.map((job, idx) => {
+                    const ratio = Math.min(100, Math.round(((job.applicantCount || 0) / maxApplicants) * 100));
+                    return (
                       <tr key={job.jobId}>
-                        <td>
+                        {/* Rank */}
+                        <td style={{ width: '60px', textAlign: 'center' }}>
                           <span
                             style={{
                               display: 'inline-flex',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              width: '26px',
-                              height: '26px',
+                              width: 26,
+                              height: 26,
                               borderRadius: 'var(--radius-full)',
-                              backgroundColor: idx === 0 ? 'rgba(245, 158, 11, 0.15)' : 'var(--color-bg-subtle)',
-                              color: idx === 0 ? '#b45309' : 'var(--color-text)',
+                              fontSize: 'var(--text-xs)',
                               fontWeight: 700,
-                              fontSize: '0.8125rem',
+                              backgroundColor: idx === 0 ? 'var(--color-primary-100)' : 'var(--color-surface-hover)',
+                              color: idx === 0 ? 'var(--color-primary-700)' : 'var(--color-text-secondary)',
                             }}
                           >
                             {idx + 1}
                           </span>
                         </td>
-                        <td>
-                          <div style={{ fontWeight: 600 }}>{job.jobTitle}</div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                            {job.jobType || 'Full-Time'} • #{job.jobId}
+
+                        {/* Job + Company */}
+                        <td style={{ minWidth: '220px' }}>
+                          <div style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                            {job.jobTitle}
+                          </div>
+                          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                            {job.companyName} • <span style={{ fontFamily: 'var(--font-mono)' }}>#{job.jobId}</span>
                           </div>
                         </td>
-                        <td>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                            <Building2 size={14} style={{ color: 'var(--color-primary)' }} />
-                            <span>{job.companyName}</span>
-                          </span>
+
+                        {/* Package */}
+                        <td className="col-numeric" style={{ width: '130px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                          {formatSalary(job.packageAmount)}
                         </td>
-                        <td>
-                          <span style={{ fontWeight: 600, color: 'var(--color-primary)' }}>
-                            {formatLPA(job.packageAmount)}
-                          </span>
+
+                        {/* Deadline */}
+                        <td className="col-date" style={{ width: '130px', fontSize: 'var(--text-xs)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                          {formatDate(job.deadline)}
                         </td>
-                        <td>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8125rem' }}>
-                            <Clock size={13} style={{ color: 'var(--color-text-muted)' }} />
-                            <span>{job.deadline || 'Ongoing'}</span>
-                          </span>
+
+                        {/* Criteria */}
+                        <td style={{ width: '150px', fontSize: 'var(--text-xs)' }}>
+                          <div>Min CGPA: <strong>{job.minCgpa ?? '—'}</strong></div>
+                          <div style={{ color: 'var(--color-text-muted)' }}>Max Backlogs: {job.maxBacklogs ?? 0}</div>
                         </td>
-                        <td>
-                          <div style={{ fontSize: '0.75rem' }}>Min CGPA: <strong>{job.minCgpa ?? '—'}</strong></div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                            Max Backlogs: {job.maxBacklogs ?? 0}
+
+                        {/* Inline Proportional 6px Bar Ranking per Specification */}
+                        <td style={{ width: '220px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                                {job.applicantCount} {job.applicantCount === 1 ? 'applicant' : 'applicants'}
+                              </span>
+                              <span style={{ fontSize: '10px', color: 'var(--color-text-muted)' }}>
+                                {ratio}%
+                              </span>
+                            </div>
+                            <div
+                              style={{
+                                width: '100%',
+                                height: 6,
+                                backgroundColor: 'var(--color-surface-hover)',
+                                borderRadius: 'var(--radius-full)',
+                                overflow: 'hidden',
+                                border: '1px solid var(--color-border-subtle)',
+                              }}
+                            >
+                              <div
+                                style={{
+                                  width: `${ratio}%`,
+                                  height: '100%',
+                                  backgroundColor: 'var(--color-primary-600)',
+                                  borderRadius: 'var(--radius-full)',
+                                  transition: 'width var(--duration-normal)',
+                                }}
+                              />
+                            </div>
                           </div>
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
-                          <span
-                            className={job.applicantCount > 0 ? 'badge badge-primary' : 'badge badge-secondary'}
-                            style={{ fontSize: '0.8125rem', padding: '0.25rem 0.6rem', fontWeight: 700 }}
-                          >
-                            {job.applicantCount} {job.applicantCount === 1 ? 'applicant' : 'applicants'}
-                          </span>
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardBody>
-        </Card>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       )}
 
       {/* ========================================================================= */}
       {/* TAB 3: Students in Interview Process                                      */}
       {/* ========================================================================= */}
       {activeTab === 'interviewing' && (
-        <Card>
-          <CardHeader>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', width: '100%' }}>
-              <div>
-                <h2 style={{ fontSize: '1.125rem', fontWeight: 600, margin: 0 }}>Active Interview Pipeline</h2>
-                <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', margin: 0 }}>
-                  Candidates currently in active assessment rounds or shortlisted awaiting schedule.
-                </p>
+        <div className="card">
+          {/* Tab Toolbar */}
+          <div
+            style={{
+              padding: 'var(--space-4)',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 'var(--space-3)',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              borderBottom: '1px solid var(--color-border)',
+            }}
+          >
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', alignItems: 'center', flex: 1 }}>
+              <div style={{ minWidth: '220px', maxWidth: '360px', flex: 1 }}>
+                <SearchInput
+                  placeholder="Search candidate, role, company..."
+                  value={interviewSearch}
+                  onChange={setInterviewSearch}
+                />
               </div>
 
-              {/* Controls */}
-              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                <div className="search-bar" style={{ minWidth: '220px' }}>
-                  <Search size={16} className="search-icon" />
-                  <input
-                    type="text"
-                    placeholder="Search candidate, company, role..."
-                    value={interviewSearch}
-                    onChange={(e) => setInterviewSearch(e.target.value)}
-                    className="form-control form-control-sm"
-                  />
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                  <select
-                    className="form-control form-control-sm"
-                    value={interviewStageFilter}
-                    onChange={(e) => setInterviewStageFilter(e.target.value)}
-                    style={{ minWidth: '160px' }}
-                  >
-                    <option value="ALL">All Pipeline Stages</option>
-                    <option value="PENDING_ROUND">Pending Interview Rounds</option>
-                    <option value="AWAITING_SCHEDULE">Shortlisted (Awaiting Round)</option>
-                  </select>
-                </div>
+              <div style={{ minWidth: '180px' }}>
+                <select
+                  className="form-select"
+                  value={interviewStageFilter}
+                  onChange={(e) => setInterviewStageFilter(e.target.value)}
+                  aria-label="Filter interview stage"
+                >
+                  <option value="ALL">All Pipeline Stages</option>
+                  <option value="PENDING_ROUND">Pending Assessment Rounds</option>
+                  <option value="AWAITING_SCHEDULE">Shortlisted (Awaiting Round)</option>
+                </select>
               </div>
             </div>
-          </CardHeader>
 
-          <CardBody style={{ padding: 0 }}>
-            {loadingInterviews ? (
-              <div style={{ padding: '1.5rem' }}>
-                <SkeletonTable rows={5} columns={6} />
-              </div>
-            ) : filteredInterviews.length === 0 ? (
-              <EmptyState
-                icon={CalendarCheck}
-                title="No Active Candidates in Pipeline"
-                description={
-                  interviewSearch || interviewStageFilter !== 'ALL'
-                    ? 'No candidates match your pipeline filters.'
-                    : 'There are currently no candidates in active interview or shortlisting stages.'
-                }
-              />
-            ) : (
-              <div className="table-responsive">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Candidate Details</th>
-                      <th>Department</th>
-                      <th>Role & Company</th>
-                      <th style={{ width: '140px' }}>App Status</th>
-                      <th>Interview Round</th>
-                      <th style={{ width: '120px' }}>Date</th>
-                      <th style={{ width: '130px' }}>Outcome Status</th>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+              Showing <strong style={{ color: 'var(--color-text-primary)' }}>{filteredInterviews.length}</strong> candidates
+            </div>
+          </div>
+
+          {/* Table Content */}
+          {loadingInterviews ? (
+            <SkeletonTable rows={6} cols={6} />
+          ) : filteredInterviews.length === 0 ? (
+            <EmptyState
+              icon={CalendarCheck}
+              title="No Candidates in Pipeline"
+              description={
+                interviewSearch || interviewStageFilter !== 'ALL'
+                  ? 'No candidates match your current pipeline filters.'
+                  : 'There are currently no candidates in active interview evaluation stages.'
+              }
+            />
+          ) : (
+            <div className="table-responsive">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th style={{ minWidth: '200px' }}>Candidate</th>
+                    <th style={{ width: '150px' }}>Department</th>
+                    <th style={{ minWidth: '200px' }}>Role & Company</th>
+                    <th className="col-status" style={{ width: '130px', textAlign: 'center' }}>App Status</th>
+                    <th style={{ width: '150px' }}>Interview Round</th>
+                    <th className="col-date" style={{ width: '130px' }}>Date</th>
+                    <th className="col-status" style={{ width: '130px', textAlign: 'center' }}>Outcome Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredInterviews.map((row, idx) => (
+                    <tr key={`${row.applicationId}-${row.interviewId || 'unassigned'}-${idx}`}>
+                      {/* Candidate */}
+                      <td style={{ minWidth: '200px' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                          {row.studentName}
+                        </div>
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>
+                          #{row.studentId} • {row.email}
+                        </div>
+                      </td>
+
+                      {/* Department */}
+                      <td style={{ width: '150px' }}>
+                        <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>
+                          {row.departmentName || '—'}
+                        </span>
+                      </td>
+
+                      {/* Job & Company */}
+                      <td style={{ minWidth: '200px' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                          {row.jobTitle}
+                        </div>
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                          {row.companyName}
+                        </div>
+                      </td>
+
+                      {/* App Status */}
+                      <td className="col-status" style={{ width: '130px', textAlign: 'center' }}>
+                        <StatusBadge status={row.applicationStatus} />
+                      </td>
+
+                      {/* Interview Round */}
+                      <td style={{ width: '150px' }}>
+                        {row.interviewId ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                            <span style={{ fontWeight: 600, fontSize: 'var(--text-xs)' }}>Round {row.roundNumber}</span>
+                            <CategoryTag label={row.roundType || 'General Round'} />
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
+                            Awaiting schedule
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Date */}
+                      <td className="col-date" style={{ width: '130px', fontSize: 'var(--text-xs)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                        {formatDate(row.interviewDate)}
+                      </td>
+
+                      {/* Outcome Status */}
+                      <td className="col-status" style={{ width: '130px', textAlign: 'center' }}>
+                        {row.interviewResult ? (
+                          <StatusBadge status={row.interviewResult} />
+                        ) : (
+                          <StatusBadge status="PENDING" />
+                        )}
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {filteredInterviews.map((row, idx) => (
-                      <tr key={`${row.applicationId}-${row.interviewId || 'unassigned'}-${idx}`}>
-                        <td>
-                          <div style={{ fontWeight: 600 }}>{row.studentName}</div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                            #{row.studentId} • {row.email}
-                          </div>
-                        </td>
-                        <td>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                            <GraduationCap size={14} style={{ color: 'var(--color-primary)' }} />
-                            <span>{row.departmentName}</span>
-                          </span>
-                        </td>
-                        <td>
-                          <div style={{ fontWeight: 600 }}>{row.jobTitle}</div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                            {row.companyName}
-                          </div>
-                        </td>
-                        <td>
-                          <span
-                            className={
-                              row.applicationStatus === 'SHORTLISTED'
-                                ? 'badge badge-primary'
-                                : 'badge badge-info'
-                            }
-                            style={{ fontSize: '0.75rem', fontWeight: 600 }}
-                          >
-                            {row.applicationStatus}
-                          </span>
-                        </td>
-                        <td>
-                          {row.interviewId ? (
-                            <div>
-                              <span style={{ fontWeight: 600 }}>Round {row.roundNumber}</span>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                                {row.roundType || 'General Round'}
-                              </div>
-                            </div>
-                          ) : (
-                            <span style={{ fontStyle: 'italic', color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>
-                              Awaiting Scheduling
-                            </span>
-                          )}
-                        </td>
-                        <td>
-                          {row.interviewDate ? (
-                            <span style={{ fontSize: '0.8125rem' }}>{row.interviewDate}</span>
-                          ) : (
-                            <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>—</span>
-                          )}
-                        </td>
-                        <td>
-                          {row.interviewResult ? (
-                            <span
-                              className={
-                                row.interviewResult.toLowerCase() === 'pending'
-                                  ? 'badge badge-warning'
-                                  : 'badge badge-secondary'
-                              }
-                              style={{ fontSize: '0.75rem', fontWeight: 600 }}
-                            >
-                              {row.interviewResult}
-                            </span>
-                          ) : (
-                            <span className="badge badge-secondary" style={{ fontSize: '0.75rem' }}>
-                              Pending Schedule
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardBody>
-        </Card>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

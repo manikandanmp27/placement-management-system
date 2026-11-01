@@ -14,7 +14,8 @@ export function ToastProvider({ children }) {
     const id = Date.now() + Math.random().toString(36).substring(2, 7);
     const newToast = { id, title, message, type, duration };
 
-    setToasts((prev) => [...prev, newToast]);
+    // Cap at 3 visible toasts per design specification
+    setToasts((prev) => [...prev.slice(-2), newToast]);
 
     if (duration > 0) {
       setTimeout(() => {
@@ -25,10 +26,15 @@ export function ToastProvider({ children }) {
   }, [removeToast]);
 
   const toast = {
-    success: (message, title = 'Success') => addToast({ title, message, type: 'success' }),
-    error: (message, title = 'Error') => addToast({ title, message, type: 'error' }),
-    warning: (message, title = 'Warning') => addToast({ title, message, type: 'warning' }),
-    info: (message, title = 'Info') => addToast({ title, message, type: 'info' }),
+    success: (message, title = 'Success') => addToast({ title, message, type: 'success', duration: 4000 }),
+    error: (message, title = 'Error') => addToast({ title, message, type: 'error', duration: 8000 }),
+    warning: (message, title = 'Warning') => addToast({ title, message, type: 'warning', duration: 6000 }),
+    info: (message, title = 'Info') => addToast({ title, message, type: 'info', duration: 4000 }),
+    // Defensive alias for legacy showToast calls in DepartmentsPage and OfficerAccountsPage
+    showToast: (message, type = 'info', title = '') => {
+      const resolvedTitle = title || (type.charAt(0).toUpperCase() + type.slice(1));
+      addToast({ title: resolvedTitle, message, type });
+    },
     remove: removeToast,
   };
 
@@ -51,7 +57,7 @@ export function ToastProvider({ children }) {
       {children}
       <div className="toast-container" role="region" aria-label="Notifications" aria-live="polite">
         {toasts.map((t) => (
-          <div key={t.id} className={`toast toast-${t.type}`} role="alert">
+          <div key={t.id} className={`toast toast-${t.type}`} role={t.type === 'error' ? 'alert' : 'status'}>
             {renderIcon(t.type)}
             <div className="toast-content">
               {t.title && <h4 className="toast-title">{t.title}</h4>}

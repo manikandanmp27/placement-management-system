@@ -4,13 +4,13 @@ import { Search, X } from 'lucide-react';
 export function SearchInput({
   value,
   onChange,
-  placeholder = 'Search...',
+  placeholder = 'Search records...',
   className = '',
   id,
 }) {
   return (
-    <div className={`search-input-wrap ${className}`.trim()}>
-      <Search size={16} className="search-input-icon" />
+    <div className={`search-input-wrap ${className}`.trim()} role="search">
+      <Search size={16} strokeWidth={1.75} className="search-input-icon" aria-hidden="true" />
       <input
         type="text"
         id={id}
@@ -25,9 +25,10 @@ export function SearchInput({
           type="button"
           className="search-clear-btn"
           onClick={() => onChange('')}
-          aria-label="Clear search"
+          aria-label="Clear search query"
+          title="Clear search"
         >
-          <X size={14} />
+          <X size={14} strokeWidth={1.75} />
         </button>
       )}
     </div>

@@ -1,15 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  GraduationCap,
+  Users,
   Building2,
-  Briefcase,
+  ClipboardList,
   FileText,
-  CalendarCheck,
+  CalendarClock,
   Award,
   TrendingUp,
-  Plus,
+  RefreshCw,
   ArrowRight,
+  ArrowUpRight,
 } from 'lucide-react';
 import {
   BarChart,
@@ -21,7 +22,6 @@ import {
   PieChart,
   Pie,
   Cell,
-  Legend,
 } from 'recharts';
 
 import { studentsApi } from '../api/students';
@@ -32,8 +32,7 @@ import { interviewsApi } from '../api/interviews';
 import { placementsApi } from '../api/placements';
 import { departmentsApi } from '../api/departments';
 
-import MetricCard from '../components/common/MetricCard';
-import StatusBadge from '../components/common/StatusBadge';
+import StatusBadge, { CategoryTag } from '../components/common/StatusBadge';
 import { Card, CardHeader, CardBody } from '../components/common/Card';
 import Button from '../components/common/Button';
 import { SkeletonMetricsGrid, SkeletonTable } from '../components/common/LoadingSkeleton';
@@ -43,15 +42,6 @@ import { formatDate } from '../utils/formatters';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import StudentDashboardPage from './StudentDashboardPage';
-
-const STATUS_COLORS = {
-  APPLIED: '#3B82F6',
-  SHORTLISTED: '#F59E0B',
-  SELECTED: '#10B981',
-  REJECTED: '#EF4444',
-};
-
-const CHART_PALETTE = ['#3B5BDB', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4'];
 
 export function DashboardPage() {
   const { isStudent } = useAuth();
@@ -66,6 +56,7 @@ export function DashboardPage() {
 function OfficerDashboardContent() {
   const { isDark } = useTheme();
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState(null);
 
   const [metrics, setMetrics] = useState({
@@ -88,9 +79,10 @@ function OfficerDashboardContent() {
     departments: [],
   });
 
-  const loadDashboardData = async () => {
+  const loadDashboardData = useCallback(async (isSilent = false) => {
     try {
-      setLoading(true);
+      if (!isSilent) setLoading(true);
+      else setIsRefreshing(true);
       setError(null);
 
       const [
@@ -147,31 +139,53 @@ function OfficerDashboardContent() {
       });
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
-      setError(err.message || 'Unable to connect to the backend server.');
+      setError(err.message || 'Unable to load placement operations data.');
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadDashboardData();
-  }, []);
+  }, [loadDashboardData]);
 
-  const applicationStatusData = React.useMemo(() => {
+  // Read CSS variables for Recharts so charts adapt to theme
+  const chartColors = useMemo(() => {
+    return {
+      applied: isDark ? '#C79A73' : '#8A532B',
+      shortlisted: isDark ? '#E5A93C' : '#D97706',
+      selected: isDark ? '#34D399' : '#10B981',
+      rejected: isDark ? '#F87171' : '#EF4444',
+      primary: isDark ? '#D28C57' : '#743F1D',
+      grid: isDark ? '#2D221B' : '#E6DED6',
+      text: isDark ? '#D5C7B8' : '#5A4638',
+      tooltipBg: isDark ? '#201712' : '#FFFFFF',
+      tooltipBorder: isDark ? '#3D2D22' : '#DFD5C6',
+    };
+  }, [isDark]);
+
+  // Applications Donut Breakdown
+  const applicationStatusData = useMemo(() => {
     if (!data.applications.length) return [];
-    const counts = {};
+    const counts = { APPLIED: 0, SHORTLISTED: 0, SELECTED: 0, REJECTED: 0 };
     data.applications.forEach((app) => {
-      const st = app.status ? app.status.toUpperCase() : 'APPLIED';
-      counts[st] = (counts[st] || 0) + 1;
+      const st = (app.status || 'APPLIED').toUpperCase();
+      if (counts[st] !== undefined) counts[st] += 1;
+      else counts.APPLIED += 1;
     });
-    return Object.entries(counts).map(([name, count]) => ({
-      name,
-      count,
-      color: STATUS_COLORS[name] || '#64748B',
-    }));
-  }, [data.applications]);
 
-  const departmentDistribution = React.useMemo(() => {
+    const total = data.applications.length;
+    return [
+      { name: 'Applied', key: 'APPLIED', count: counts.APPLIED, color: chartColors.applied, pct: total ? Math.round((counts.APPLIED / total) * 100) : 0 },
+      { name: 'Shortlisted', key: 'SHORTLISTED', count: counts.SHORTLISTED, color: chartColors.shortlisted, pct: total ? Math.round((counts.SHORTLISTED / total) * 100) : 0 },
+      { name: 'Selected', key: 'SELECTED', count: counts.SELECTED, color: chartColors.selected, pct: total ? Math.round((counts.SELECTED / total) * 100) : 0 },
+      { name: 'Rejected', key: 'REJECTED', count: counts.REJECTED, color: chartColors.rejected, pct: total ? Math.round((counts.REJECTED / total) * 100) : 0 },
+    ].filter((item) => item.count > 0);
+  }, [data.applications, chartColors]);
+
+  // Students by Department Horizontal Bars
+  const departmentDistribution = useMemo(() => {
     if (!data.departments.length || !data.students.length) return [];
     const map = {};
     data.departments.forEach((d) => {
@@ -185,19 +199,18 @@ function OfficerDashboardContent() {
     });
     return Object.values(map)
       .filter((d) => d.count > 0)
-      .map((d) => ({
-        ...d,
-        shortName: d.name.length > 15 ? d.name.substring(0, 15) + '…' : d.name,
-      }));
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8);
   }, [data.departments, data.students]);
 
-  const recentApplications = React.useMemo(() => {
+  // Recent operational items
+  const recentApplications = useMemo(() => {
     return [...data.applications]
       .sort((a, b) => (b.applicationId || 0) - (a.applicationId || 0))
       .slice(0, 5);
   }, [data.applications]);
 
-  const recentInterviews = React.useMemo(() => {
+  const recentInterviews = useMemo(() => {
     return [...data.interviews]
       .sort((a, b) => (b.interviewId || 0) - (a.interviewId || 0))
       .slice(0, 5);
@@ -205,17 +218,10 @@ function OfficerDashboardContent() {
 
   if (loading) {
     return (
-      <div>
-        <div style={{ marginBottom: '1.5rem' }}>
-          <h2 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '0.25rem' }}>
-            Placement Operations Overview
-          </h2>
-          <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
-            Real-time university placement activity and recruitment metrics.
-          </p>
-        </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+        <div style={{ height: '36px', width: '280px', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--color-surface)', opacity: 0.6 }} />
         <SkeletonMetricsGrid count={7} />
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '1.5rem', marginTop: '1.5rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 'var(--space-6)' }}>
           <SkeletonTable rows={4} cols={3} />
           <SkeletonTable rows={4} cols={3} />
         </div>
@@ -224,509 +230,440 @@ function OfficerDashboardContent() {
   }
 
   if (error) {
-    return <ErrorState message={error} onRetry={loadDashboardData} />;
+    return <ErrorState title="Couldn't load dashboard" message={error} onRetry={() => loadDashboardData(false)} />;
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
-      
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '1rem',
-        }}
-      >
-        <div>
-          <h2 style={{ fontSize: '1.45rem', fontWeight: 700, letterSpacing: '-0.02em', margin: 0 }}>
-            Placement Operations Overview
-          </h2>
-          <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
-            Live metrics, application progress, and university recruitment analytics.
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+      {/* Page Header */}
+      <div className="page-header" style={{ marginBottom: 0 }}>
+        <div className="page-header-title-area">
+          <h1 className="page-header-title">Placement Operations Dashboard</h1>
+          <p className="page-header-subtitle">
+            Recruitment pipeline overview, active drives, and department metrics
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <Link to="/jobs">
-            <Button variant="primary" icon={Plus}>
-              Browse & Apply Jobs
-            </Button>
-          </Link>
-          <Link to="/statistics">
-            <Button variant="secondary" icon={TrendingUp}>
-              View Statistics
-            </Button>
-          </Link>
+        <div className="page-header-actions">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => loadDashboardData(true)}
+            isLoading={isRefreshing}
+            icon={RefreshCw}
+          >
+            Refresh
+          </Button>
         </div>
       </div>
 
+      {/* 1. KPI Strip (Quiet Ledger 4+3 Grid with Placement Rate Lead Card) */}
       <div
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-          gap: '1rem',
+          gap: 'var(--space-4)',
         }}
       >
-        <MetricCard
-          title="Total Students"
-          value={metrics.totalStudents}
-          icon={GraduationCap}
-          variant="info"
-          subtitle="Enrolled cohort"
-        />
-        <MetricCard
-          title="Companies"
-          value={metrics.registeredCompanies}
-          icon={Building2}
-          variant="default"
-          subtitle="Corporate partners"
-        />
-        <MetricCard
-          title="Available Jobs"
-          value={metrics.availableJobs}
-          icon={Briefcase}
-          variant="default"
-          subtitle="Open postings"
-        />
-        <MetricCard
-          title="Applications"
-          value={metrics.totalApplications}
-          icon={FileText}
-          variant="info"
-          subtitle="Total submissions"
-        />
-        <MetricCard
-          title="Interviews"
-          value={metrics.scheduledInterviews}
-          icon={CalendarCheck}
-          variant="warning"
-          subtitle="Rounds scheduled"
-        />
-        <MetricCard
-          title="Placements"
-          value={metrics.successfulPlacements}
-          icon={Award}
-          variant="success"
-          subtitle="Verified offers"
-        />
-        <MetricCard
-          title="Placement Rate"
-          value={`${metrics.placementPercentage}%`}
-          icon={TrendingUp}
-          variant="success"
-          trend="Overall rate"
-          subtitle="Of total students"
-        />
+        {/* Placement Rate Lead Card (Spans 2 columns on larger screens) */}
+        <Link to="/placements" style={{ textDecoration: 'none', gridColumn: 'span 2' }}>
+          <div className="metric-card lead card-interactive" style={{ height: '100%' }}>
+            <div className="metric-card-top">
+              <span className="metric-card-label">Placement Rate</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <div className="metric-card-icon-wrap success" aria-hidden="true">
+                  <TrendingUp size={18} strokeWidth={1.75} />
+                </div>
+                <ArrowUpRight size={14} strokeWidth={1.75} style={{ color: 'var(--color-text-muted)' }} />
+              </div>
+            </div>
+
+            <div className="metric-card-value">
+              {metrics.placementPercentage}%
+            </div>
+
+            {/* Success Progress Bar */}
+            <div
+              style={{
+                width: '100%',
+                height: '6px',
+                borderRadius: 'var(--radius-full)',
+                backgroundColor: 'var(--color-surface-active)',
+                overflow: 'hidden',
+                margin: '4px 0',
+              }}
+            >
+              <div
+                style={{
+                  width: `${Math.min(100, metrics.placementPercentage)}%`,
+                  height: '100%',
+                  backgroundColor: 'var(--color-success)',
+                  borderRadius: 'var(--radius-full)',
+                }}
+              />
+            </div>
+
+            <div className="metric-card-meta">
+              <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                {metrics.successfulPlacements} of {metrics.totalStudents} eligible students placed
+              </span>
+            </div>
+          </div>
+        </Link>
+
+        {/* Total Students */}
+        <Link to="/students" style={{ textDecoration: 'none' }}>
+          <div className="metric-card card-interactive" style={{ height: '100%' }}>
+            <div className="metric-card-top">
+              <span className="metric-card-label">Students</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <div className="metric-card-icon-wrap" aria-hidden="true">
+                  <Users size={18} strokeWidth={1.75} />
+                </div>
+                <ArrowUpRight size={14} strokeWidth={1.75} style={{ color: 'var(--color-text-muted)' }} />
+              </div>
+            </div>
+            <div className="metric-card-value">{metrics.totalStudents}</div>
+            <div className="metric-card-meta"><span>Enrolled roster cohort</span></div>
+          </div>
+        </Link>
+
+        {/* Corporate Partners */}
+        <Link to="/companies" style={{ textDecoration: 'none' }}>
+          <div className="metric-card card-interactive" style={{ height: '100%' }}>
+            <div className="metric-card-top">
+              <span className="metric-card-label">Companies</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <div className="metric-card-icon-wrap" aria-hidden="true">
+                  <Building2 size={18} strokeWidth={1.75} />
+                </div>
+                <ArrowUpRight size={14} strokeWidth={1.75} style={{ color: 'var(--color-text-muted)' }} />
+              </div>
+            </div>
+            <div className="metric-card-value">{metrics.registeredCompanies}</div>
+            <div className="metric-card-meta"><span>Active hiring partners</span></div>
+          </div>
+        </Link>
+
+        {/* Available Jobs */}
+        <Link to="/jobs" style={{ textDecoration: 'none' }}>
+          <div className="metric-card card-interactive" style={{ height: '100%' }}>
+            <div className="metric-card-top">
+              <span className="metric-card-label">Jobs</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <div className="metric-card-icon-wrap" aria-hidden="true">
+                  <ClipboardList size={18} strokeWidth={1.75} />
+                </div>
+                <ArrowUpRight size={14} strokeWidth={1.75} style={{ color: 'var(--color-text-muted)' }} />
+              </div>
+            </div>
+            <div className="metric-card-value">{metrics.availableJobs}</div>
+            <div className="metric-card-meta"><span>Active recruitment drives</span></div>
+          </div>
+        </Link>
+
+        {/* Applications */}
+        <Link to="/applications" style={{ textDecoration: 'none' }}>
+          <div className="metric-card card-interactive" style={{ height: '100%' }}>
+            <div className="metric-card-top">
+              <span className="metric-card-label">Applications</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <div className="metric-card-icon-wrap info" aria-hidden="true">
+                  <FileText size={18} strokeWidth={1.75} />
+                </div>
+                <ArrowUpRight size={14} strokeWidth={1.75} style={{ color: 'var(--color-text-muted)' }} />
+              </div>
+            </div>
+            <div className="metric-card-value">{metrics.totalApplications}</div>
+            <div className="metric-card-meta"><span>Candidate submissions</span></div>
+          </div>
+        </Link>
+
+        {/* Interviews */}
+        <Link to="/interviews" style={{ textDecoration: 'none' }}>
+          <div className="metric-card card-interactive" style={{ height: '100%' }}>
+            <div className="metric-card-top">
+              <span className="metric-card-label">Interviews</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <div className="metric-card-icon-wrap warning" aria-hidden="true">
+                  <CalendarClock size={18} strokeWidth={1.75} />
+                </div>
+                <ArrowUpRight size={14} strokeWidth={1.75} style={{ color: 'var(--color-text-muted)' }} />
+              </div>
+            </div>
+            <div className="metric-card-value">{metrics.scheduledInterviews}</div>
+            <div className="metric-card-meta"><span>Evaluation rounds scheduled</span></div>
+          </div>
+        </Link>
+
+        {/* Placements */}
+        <Link to="/placements" style={{ textDecoration: 'none' }}>
+          <div className="metric-card card-interactive" style={{ height: '100%' }}>
+            <div className="metric-card-top">
+              <span className="metric-card-label">Offers</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <div className="metric-card-icon-wrap success" aria-hidden="true">
+                  <Award size={18} strokeWidth={1.75} />
+                </div>
+                <ArrowUpRight size={14} strokeWidth={1.75} style={{ color: 'var(--color-text-muted)' }} />
+              </div>
+            </div>
+            <div className="metric-card-value">{metrics.successfulPlacements}</div>
+            <div className="metric-card-meta"><span>Recorded placement offers</span></div>
+          </div>
+        </Link>
       </div>
 
+      {/* 2. Charts Row (Two-Up Layout) */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))',
-          gap: '1.5rem',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+          gap: 'var(--space-6)',
         }}
       >
-        
+        {/* Application Status Donut with Legible Legend Table */}
         <Card>
           <CardHeader
             title="Applications by Status"
-            subtitle="Current progression across hiring pipelines"
+            subtitle="Current candidate distribution in the pipeline"
           />
           <CardBody>
             {applicationStatusData.length === 0 ? (
               <EmptyState
-                title="No Applications Recorded"
-                description="Applications will appear here once students apply to jobs."
+                icon={FileText}
+                title="No applications recorded"
+                description="Status metrics will calculate as candidates apply to recruitment drives."
               />
             ) : (
-              <div style={{ width: '100%', height: 260 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
+                {/* Donut Chart */}
+                <div style={{ width: 180, height: 200, flexShrink: 0 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={applicationStatusData}
+                        dataKey="count"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={50}
+                        outerRadius={75}
+                        paddingAngle={3}
+                      >
+                        {applicationStatusData.map((entry) => (
+                          <Cell key={entry.key} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: chartColors.tooltipBg,
+                          borderColor: chartColors.tooltipBorder,
+                          borderRadius: '8px',
+                          color: isDark ? '#F8FAFC' : '#0F172A',
+                          boxShadow: 'var(--shadow-3)',
+                          fontSize: '12px',
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Legend Table (Labels, counts, and percentages) */}
+                <div style={{ flex: 1, minWidth: '180px' }}>
+                  <table className="table" style={{ fontSize: 'var(--text-xs)' }}>
+                    <tbody>
+                      {applicationStatusData.map((item) => (
+                        <tr key={item.key} style={{ height: '32px' }}>
+                          <td style={{ padding: '6px 8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: item.color }} />
+                              <span style={{ fontWeight: 500 }}>{item.name}</span>
+                            </div>
+                          </td>
+                          <td className="col-numeric" style={{ padding: '6px 8px', fontWeight: 600 }}>
+                            {item.count}
+                          </td>
+                          <td className="col-numeric" style={{ padding: '6px 8px', color: 'var(--color-text-muted)' }}>
+                            {item.pct}%
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </CardBody>
+        </Card>
+
+        {/* Students by Department Horizontal Bar Chart */}
+        <Card>
+          <CardHeader
+            title="Students by Department"
+            subtitle="Academic cohort representation in placement directory"
+          />
+          <CardBody>
+            {departmentDistribution.length === 0 ? (
+              <EmptyState
+                icon={Users}
+                title="No department cohort data"
+                description="Department student distribution will appear when records are loaded."
+              />
+            ) : (
+              <div style={{ width: '100%', height: 220 }}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={applicationStatusData} margin={{ top: 15, right: 10, left: -20, bottom: 5 }}>
-                    <XAxis
-                      dataKey="name"
-                      stroke={isDark ? '#A5B4C7' : '#667085'}
-                      fontSize={12}
-                      tickLine={false}
-                    />
+                  <BarChart
+                    data={departmentDistribution}
+                    layout="vertical"
+                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                  >
+                    <XAxis type="number" stroke={chartColors.text} fontSize={12} tickLine={false} allowDecimals={false} />
                     <YAxis
-                      stroke={isDark ? '#A5B4C7' : '#667085'}
-                      fontSize={12}
+                      type="category"
+                      dataKey="name"
+                      stroke={chartColors.text}
+                      fontSize={11}
                       tickLine={false}
-                      allowDecimals={false}
+                      width={100}
                     />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: isDark ? '#151F32' : '#FFFFFF',
-                        borderColor: isDark ? '#2A3850' : '#E4E8F0',
+                        backgroundColor: chartColors.tooltipBg,
+                        borderColor: chartColors.tooltipBorder,
                         borderRadius: '8px',
-                        color: isDark ? '#F1F5F9' : '#172033',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                        color: isDark ? '#F8FAFC' : '#0F172A',
+                        boxShadow: 'var(--shadow-3)',
+                        fontSize: '12px',
                       }}
                     />
-                    <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                      {applicationStatusData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Bar>
+                    <Bar dataKey="count" fill={chartColors.primary} radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             )}
           </CardBody>
         </Card>
+      </div>
 
+      {/* 3. Recent Activity Row (Two-Up Tables) */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+          gap: 'var(--space-6)',
+        }}
+      >
+        {/* Recent Applications */}
         <Card>
           <CardHeader
-            title="Students by Department"
-            subtitle="Academic departmental representation"
+            title="Recent Applications"
+            subtitle="Latest candidate drive submissions"
+            action={
+              <Link to="/applications" style={{ textDecoration: 'none' }}>
+                <Button variant="ghost" size="sm">
+                  <span>View all</span>
+                  <ArrowRight size={14} strokeWidth={1.75} />
+                </Button>
+              </Link>
+            }
           />
-          <CardBody>
-            {departmentDistribution.length === 0 ? (
-              <EmptyState
-                title="No Department Data"
-                description="Department student counts will be visualized once departments and students are present."
-              />
+          <CardBody style={{ padding: 0 }}>
+            {recentApplications.length === 0 ? (
+              <div style={{ padding: 'var(--space-6)', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)' }}>
+                No recent applications recorded.
+              </div>
             ) : (
-              <div style={{ width: '100%', height: 260 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={departmentDistribution}
-                      dataKey="count"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={85}
-                      innerRadius={45}
-                      paddingAngle={3}
-                    >
-                      {departmentDistribution.map((entry, index) => (
-                        <Cell
-                          key={`pie-cell-${index}`}
-                          fill={CHART_PALETTE[index % CHART_PALETTE.length]}
-                        />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: isDark ? '#151F32' : '#FFFFFF',
-                        borderColor: isDark ? '#2A3850' : '#E4E8F0',
-                        borderRadius: '8px',
-                        color: isDark ? '#F1F5F9' : '#172033',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                      }}
-                    />
-                    <Legend
-                      formatter={(val) => (
-                        <span style={{ color: isDark ? '#A5B4C7' : '#667085', fontSize: '0.75rem' }}>
-                          {val}
-                        </span>
-                      )}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
+              <div className="table-container" style={{ border: 'none', borderRadius: 0, boxShadow: 'none' }}>
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Candidate & Role</th>
+                      <th>Status</th>
+                      <th style={{ textAlign: 'right' }}>Applied</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentApplications.map((app) => (
+                      <tr key={app.applicationId}>
+                        <td>
+                          <div className="cell-primary">
+                            <span className="cell-title">{app.student?.name || `Student #${app.studentId}`}</span>
+                            <span className="cell-subtitle">
+                              {app.job?.jobTitle || `Job #${app.jobId}`} • {app.job?.company?.companyName}
+                            </span>
+                          </div>
+                        </td>
+                        <td>
+                          <StatusBadge status={app.status} />
+                        </td>
+                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                          {formatDate(app.applicationDate)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardBody>
+        </Card>
+
+        {/* Upcoming Interviews */}
+        <Card>
+          <CardHeader
+            title="Upcoming Interviews"
+            subtitle="Next scheduled assessment rounds"
+            action={
+              <Link to="/interviews" style={{ textDecoration: 'none' }}>
+                <Button variant="ghost" size="sm">
+                  <span>View all</span>
+                  <ArrowRight size={14} strokeWidth={1.75} />
+                </Button>
+              </Link>
+            }
+          />
+          <CardBody style={{ padding: 0 }}>
+            {recentInterviews.length === 0 ? (
+              <div style={{ padding: 'var(--space-6)', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)' }}>
+                No upcoming interviews scheduled.
+              </div>
+            ) : (
+              <div className="table-container" style={{ border: 'none', borderRadius: 0, boxShadow: 'none' }}>
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Candidate & Role</th>
+                      <th>Round</th>
+                      <th style={{ textAlign: 'right' }}>Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentInterviews.map((intv) => (
+                      <tr key={intv.interviewId}>
+                        <td>
+                          <div className="cell-primary">
+                            <span className="cell-title">{intv.application?.student?.name || 'Candidate'}</span>
+                            <span className="cell-subtitle">
+                              {intv.application?.job?.jobTitle || 'Role'} • {intv.application?.job?.company?.companyName}
+                            </span>
+                          </div>
+                        </td>
+                        <td>
+                          <CategoryTag>{intv.roundType || `Round ${intv.roundNumber}`}</CategoryTag>
+                        </td>
+                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 'var(--text-xs)' }}>
+                          {formatDate(intv.interviewDate)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </CardBody>
         </Card>
       </div>
-
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
-          gap: '1.5rem',
-        }}
-      >
-        
-        <Card>
-          <CardHeader
-            title="Recent Applications"
-            subtitle="Latest candidate job submissions"
-            action={
-              <Link to="/applications" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.8rem', fontWeight: 600 }}>
-                View all <ArrowRight size={14} />
-              </Link>
-            }
-          />
-          <div className="table-container" style={{ border: 'none', borderRadius: 0 }}>
-            {recentApplications.length === 0 ? (
-              <EmptyState
-                title="No Recent Applications"
-                description="No application records found."
-              />
-            ) : (
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Student</th>
-                    <th>Role & Company</th>
-                    <th>Date</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentApplications.map((app) => (
-                    <tr key={app.applicationId}>
-                      <td>
-                        <div style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                          {app.student?.name || `Student #${app.student?.studentId}`}
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                          ID: {app.student?.studentId}
-                        </div>
-                      </td>
-                      <td>
-                        <div style={{ fontWeight: 500 }}>
-                          {app.job?.jobTitle || `Job #${app.job?.jobId}`}
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                          {app.job?.company?.companyName}
-                        </div>
-                      </td>
-                      <td style={{ whiteSpace: 'nowrap', fontSize: '0.8rem' }}>
-                        {formatDate(app.applicationDate)}
-                      </td>
-                      <td>
-                        <StatusBadge status={app.status} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </Card>
-
-        <Card>
-          <CardHeader
-            title="Interview Schedules"
-            subtitle="Upcoming candidate assessments and rounds"
-            action={
-              <Link to="/interviews" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.8rem', fontWeight: 600 }}>
-                View all <ArrowRight size={14} />
-              </Link>
-            }
-          />
-          <div className="table-container" style={{ border: 'none', borderRadius: 0 }}>
-            {recentInterviews.length === 0 ? (
-              <EmptyState
-                title="No Interviews Scheduled"
-                description="No interview round records found."
-              />
-            ) : (
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Round</th>
-                    <th>Candidate</th>
-                    <th>Date</th>
-                    <th>Result</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentInterviews.map((item) => (
-                    <tr key={item.interviewId}>
-                      <td>
-                        <div style={{ fontWeight: 600 }}>
-                          Round {item.roundNumber}
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                          {item.roundType || 'General'}
-                        </div>
-                      </td>
-                      <td>
-                        <div style={{ fontWeight: 500 }}>
-                          {item.application?.student?.name || `App #${item.application?.applicationId}`}
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                          {item.application?.job?.jobTitle}
-                        </div>
-                      </td>
-                      <td style={{ whiteSpace: 'nowrap', fontSize: '0.8rem' }}>
-                        {formatDate(item.interviewDate)}
-                      </td>
-                      <td>
-                        <StatusBadge status={item.result} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader
-          title="Quick Actions & Operations"
-          subtitle="Frequently executed placement office workflows"
-        />
-        <CardBody>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-              gap: '1rem',
-            }}
-          >
-            <Link to="/jobs" style={{ textDecoration: 'none' }}>
-              <div
-                className="card"
-                style={{
-                  padding: '1.25rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '1rem',
-                  cursor: 'pointer',
-                  border: '1px solid var(--color-border)',
-                }}
-              >
-                <div
-                  style={{
-                    width: '2.5rem',
-                    height: '2.5rem',
-                    borderRadius: 'var(--radius-md)',
-                    backgroundColor: 'var(--color-primary-subtle)',
-                    color: 'var(--color-primary)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <Briefcase size={20} />
-                </div>
-                <div>
-                  <div style={{ fontWeight: 600, color: 'var(--color-text-primary)', fontSize: '0.9rem' }}>
-                    Apply for Job
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
-                    Trigger stored procedure check
-                  </div>
-                </div>
-              </div>
-            </Link>
-
-            <Link to="/students" style={{ textDecoration: 'none' }}>
-              <div
-                className="card"
-                style={{
-                  padding: '1.25rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '1rem',
-                  cursor: 'pointer',
-                  border: '1px solid var(--color-border)',
-                }}
-              >
-                <div
-                  style={{
-                    width: '2.5rem',
-                    height: '2.5rem',
-                    borderRadius: 'var(--radius-md)',
-                    backgroundColor: 'var(--color-info-bg)',
-                    color: 'var(--color-info)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <GraduationCap size={20} />
-                </div>
-                <div>
-                  <div style={{ fontWeight: 600, color: 'var(--color-text-primary)', fontSize: '0.9rem' }}>
-                    Students Directory
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
-                    Manage profiles & CGPA
-                  </div>
-                </div>
-              </div>
-            </Link>
-
-            <Link to="/placements" style={{ textDecoration: 'none' }}>
-              <div
-                className="card"
-                style={{
-                  padding: '1.25rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '1rem',
-                  cursor: 'pointer',
-                  border: '1px solid var(--color-border)',
-                }}
-              >
-                <div
-                  style={{
-                    width: '2.5rem',
-                    height: '2.5rem',
-                    borderRadius: 'var(--radius-md)',
-                    backgroundColor: 'var(--color-success-bg)',
-                    color: 'var(--color-success)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <Award size={20} />
-                </div>
-                <div>
-                  <div style={{ fontWeight: 600, color: 'var(--color-text-primary)', fontSize: '0.9rem' }}>
-                    Record Placement
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
-                    Auto-updates student status
-                  </div>
-                </div>
-              </div>
-            </Link>
-
-            <Link to="/statistics" style={{ textDecoration: 'none' }}>
-              <div
-                className="card"
-                style={{
-                  padding: '1.25rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '1rem',
-                  cursor: 'pointer',
-                  border: '1px solid var(--color-border)',
-                }}
-              >
-                <div
-                  style={{
-                    width: '2.5rem',
-                    height: '2.5rem',
-                    borderRadius: 'var(--radius-md)',
-                    backgroundColor: 'var(--color-warning-bg)',
-                    color: 'var(--color-warning)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <TrendingUp size={20} />
-                </div>
-                <div>
-                  <div style={{ fontWeight: 600, color: 'var(--color-text-primary)', fontSize: '0.9rem' }}>
-                    Department Stats
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
-                    Department-wise placement %
-                  </div>
-                </div>
-              </div>
-            </Link>
-          </div>
-        </CardBody>
-      </Card>
     </div>
   );
 }

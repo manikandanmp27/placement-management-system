@@ -6,17 +6,25 @@ export function MetricCard({
   icon: Icon,
   variant = 'default',
   subtitle,
+  context,
   trend,
   className = '',
   compact = false,
+  lead = false,
+  children,
 }) {
+  const isCompact = compact || variant === 'compact';
+  const isLead = lead || variant === 'lead';
+
   return (
-    <div className={`metric-card ${compact ? 'minimal' : ''} ${className}`.trim()}>
+    <div
+      className={`metric-card ${isCompact ? 'compact' : ''} ${isLead ? 'lead' : ''} ${className}`.trim()}
+    >
       <div className="metric-card-top">
         <span className="metric-card-label">{title}</span>
         {Icon && (
-          <div className={`metric-card-icon-wrap ${variant}`}>
-            <Icon size={compact ? 16 : 20} />
+          <div className={`metric-card-icon-wrap ${variant}`} aria-hidden="true">
+            <Icon size={isCompact ? 16 : 18} strokeWidth={1.75} />
           </div>
         )}
       </div>
@@ -25,10 +33,11 @@ export function MetricCard({
         {value !== undefined && value !== null ? value : '—'}
       </div>
 
-      {(subtitle || trend) && (
+      {(subtitle || context || trend || children) && (
         <div className="metric-card-meta">
           {trend && <span style={{ fontWeight: 600 }}>{trend}</span>}
-          {subtitle && <span>{subtitle}</span>}
+          {(context || subtitle) && <span>{context || subtitle}</span>}
+          {children}
         </div>
       )}
     </div>

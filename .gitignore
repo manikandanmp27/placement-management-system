@@ -46,3 +46,5 @@ frontend/dist/
 .vscode/
 
 DECISION.md
+backend/src/main/resources/application.properties
+backend/src/main/resources/application.properties

@@ -2,18 +2,15 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   FileText,
-  CalendarCheck,
+  CalendarClock,
   Award,
   Briefcase,
-  Building2,
-  CheckCircle,
-  Clock,
-  ArrowRight,
-  Sparkles,
-  User,
-  GraduationCap,
-  TrendingUp,
   Calendar,
+  CheckCircle,
+  ArrowRight,
+  UserCircle,
+  Clock,
+  Check,
 } from 'lucide-react';
 
 import { studentsApi } from '../api/students';
@@ -23,7 +20,7 @@ import { placementsApi } from '../api/placements';
 import { useAuth } from '../contexts/AuthContext';
 
 import MetricCard from '../components/common/MetricCard';
-import StatusBadge from '../components/common/StatusBadge';
+import StatusBadge, { CategoryTag } from '../components/common/StatusBadge';
 import { Card, CardHeader, CardBody } from '../components/common/Card';
 import Button from '../components/common/Button';
 import { SkeletonMetricsGrid, SkeletonTable } from '../components/common/LoadingSkeleton';
@@ -75,7 +72,6 @@ export function StudentDashboardPage() {
     const applied = applications.filter((a) => a.status === 'APPLIED').length;
     const shortlisted = applications.filter((a) => a.status === 'SHORTLISTED').length;
     const selected = applications.filter((a) => a.status === 'SELECTED').length;
-    const rejected = applications.filter((a) => a.status === 'REJECTED').length;
 
     const todayStr = new Date().toISOString().split('T')[0];
     const upcomingInterviewsList = interviews.filter((i) => {
@@ -92,20 +88,20 @@ export function StudentDashboardPage() {
       applied,
       shortlisted,
       selected,
-      rejected,
       upcomingInterviewsCount: upcomingInterviewsList.length,
       nextInterview: upcomingInterviewsList[0] || null,
       activePlacement,
       isPlaced,
+      backlogs: student?.backlogs || 0,
     };
   }, [applications, interviews, placements, student]);
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-        <div style={{ height: '140px', borderRadius: 'var(--radius-lg)', backgroundColor: 'var(--color-surface)', opacity: 0.6 }} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+        <div style={{ height: '140px', borderRadius: 'var(--radius-xl)', backgroundColor: 'var(--color-surface)', opacity: 0.7 }} />
         <SkeletonMetricsGrid count={4} />
-        <SkeletonTable rows={4} columns={4} />
+        <SkeletonTable rows={4} cols={4} />
       </div>
     );
   }
@@ -120,307 +116,215 @@ export function StudentDashboardPage() {
     );
   }
 
+  const nextInterviewDate = stats.nextInterview?.interviewDate
+    ? new Date(stats.nextInterview.interviewDate)
+    : null;
+  const isInterviewToday = nextInterviewDate
+    ? nextInterviewDate.toISOString().split('T')[0] === new Date().toISOString().split('T')[0]
+    : false;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.15rem' }}>
-      {/* 1. Student Profile Hero Banner - Compact & Modern */}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+      {/* Page Header */}
+      <div className="page-header" style={{ marginBottom: 0 }}>
+        <div className="page-header-title-area">
+          <h1 className="page-header-title">Student Dashboard</h1>
+          <p className="page-header-subtitle">
+            Welcome back, {student?.name || user?.email?.split('@')[0] || 'Candidate'}
+          </p>
+        </div>
+      </div>
+
+      {/* 1. Hero Identity Banner (Solid primary-900, Quiet Ledger principle) */}
       <div
         style={{
-          background: 'linear-gradient(135deg, var(--color-primary-dark, #2b4acb) 0%, var(--color-primary, #3b5bdb) 100%)',
-          color: '#ffffff',
-          borderRadius: 'var(--radius-lg)',
-          padding: '1.2rem 1.5rem',
-          boxShadow: 'var(--shadow-sm)',
-          position: 'relative',
-          overflow: 'hidden',
+          backgroundColor: 'var(--color-primary-900)',
+          color: '#FFFFFF',
+          borderRadius: 'var(--radius-xl)',
+          padding: 'var(--space-6)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 'var(--space-4)',
+          boxShadow: 'var(--shadow-2)',
         }}
       >
-        <div
-          style={{
-            position: 'absolute',
-            top: '-20px',
-            right: '-20px',
-            opacity: 0.07,
-            pointerEvents: 'none',
-          }}
-        >
-          <GraduationCap size={160} />
-        </div>
-
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '1rem',
-            position: 'relative',
-            zIndex: 1,
-          }}
-        >
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.3rem',
-                  padding: '0.15rem 0.55rem',
-                  borderRadius: 'var(--radius-full)',
-                  backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                  fontSize: '0.72rem',
-                  fontWeight: 600,
-                  letterSpacing: '0.03em',
-                }}
-              >
-                <Sparkles size={12} />
-                Candidate Portal
-              </span>
-              <span
-                style={{
-                  padding: '0.15rem 0.55rem',
-                  borderRadius: 'var(--radius-full)',
-                  backgroundColor: stats.isPlaced ? 'rgba(16, 185, 129, 0.25)' : 'rgba(245, 158, 11, 0.25)',
-                  color: stats.isPlaced ? '#a7f3d0' : '#fde68a',
-                  border: `1px solid ${stats.isPlaced ? 'rgba(16, 185, 129, 0.4)' : 'rgba(245, 158, 11, 0.4)'}`,
-                  fontSize: '0.72rem',
-                  fontWeight: 700,
-                }}
-              >
-                {stats.isPlaced ? 'PLACED' : 'ACTIVELY SEEKING'}
-              </span>
-            </div>
-
-            <h1 style={{ fontSize: '1.45rem', fontWeight: 800, margin: '0 0 0.2rem 0', color: '#ffffff' }}>
-              Welcome back, {student?.name || user?.email?.split('@')[0] || 'Student'}!
-            </h1>
-            <p style={{ margin: 0, opacity: 0.9, fontSize: '0.85rem' }}>
-              Roll #{student?.studentId} • {student?.department?.departmentName || 'Academic Department'} • Class of {student?.graduationYear || '2026'}
-            </p>
-
-            {/* Quick Profile Specs */}
-            <div
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+            <span
               style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                alignItems: 'center',
-                gap: '0.6rem',
-                marginTop: '0.75rem',
-                fontSize: '0.8rem',
+                fontSize: 'var(--text-xs)',
+                fontWeight: 600,
+                color: 'var(--color-primary-200)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: 'rgba(255, 255, 255, 0.15)', padding: '0.2rem 0.6rem', borderRadius: 'var(--radius-sm)' }}>
-                <span style={{ opacity: 0.85 }}>CGPA:</span>
-                <strong>{student?.cgpa !== undefined && student?.cgpa !== null ? Number(student.cgpa).toFixed(2) : '—'} / 10.00</strong>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: 'rgba(255, 255, 255, 0.15)', padding: '0.2rem 0.6rem', borderRadius: 'var(--radius-sm)' }}>
-                <span style={{ opacity: 0.85 }}>Backlogs:</span>
-                <strong>
-                  {student?.backlogs === 0 ? '0 (Clear)' : `${student?.backlogs || 0}`}
-                </strong>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: 'rgba(255, 255, 255, 0.15)', padding: '0.2rem 0.6rem', borderRadius: 'var(--radius-sm)' }}>
-                <span style={{ opacity: 0.85 }}>Email:</span>
-                <strong>{student?.email || user?.email}</strong>
-              </div>
-            </div>
+              Candidate Identity
+            </span>
+            <span style={{ color: 'var(--color-primary-300)' }}>•</span>
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-primary-200)' }}>
+              Class of {student?.graduationYear || '2026'}
+            </span>
           </div>
 
-          <div style={{ display: 'flex', gap: '0.6rem', alignSelf: 'flex-start' }}>
-            <Link to="/my-profile" style={{ textDecoration: 'none' }}>
-              <Button
-                variant="secondary"
-                size="sm"
-                style={{
-                  backgroundColor: '#ffffff',
-                  color: 'var(--color-primary-dark, #2b4acb)',
-                  border: 'none',
-                  fontWeight: 600,
-                  padding: '0.45rem 0.85rem',
-                }}
-              >
-                <User size={14} />
-                My Profile
-              </Button>
-            </Link>
-            <Link to="/jobs" style={{ textDecoration: 'none' }}>
-              <Button
-                variant="secondary"
-                size="sm"
-                style={{
-                  backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                  color: '#ffffff',
-                  border: '1px solid rgba(255, 255, 255, 0.4)',
-                  fontWeight: 600,
-                  padding: '0.45rem 0.85rem',
-                }}
-              >
-                <Briefcase size={14} />
-                Browse Jobs
-              </Button>
-            </Link>
+          <h2 style={{ fontSize: 'var(--text-2xl)', fontWeight: 700, color: '#FFFFFF', margin: 0 }}>
+            {student?.name || 'Student Candidate'}
+          </h2>
+
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              gap: 'var(--space-3)',
+              fontSize: 'var(--text-xs)',
+              color: 'var(--color-primary-100)',
+              marginTop: 'var(--space-1)',
+            }}
+          >
+            <span>Roll #{student?.studentId}</span>
+            <span>•</span>
+            <span>{student?.department?.departmentName || 'Department'}</span>
+            <span>•</span>
+            <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+              CGPA {student?.cgpa !== undefined && student?.cgpa !== null ? Number(student.cgpa).toFixed(2) : '—'} / 10.00
+            </span>
+            <span>•</span>
+            <span>
+              {stats.backlogs === 0 ? '0 Backlogs' : `${stats.backlogs} Backlog(s)`}
+            </span>
           </div>
+        </div>
+
+        <div>
+          <StatusBadge status={stats.isPlaced ? 'PLACED' : 'NOT_PLACED'} />
         </div>
       </div>
 
-      {/* 2. Key Metrics Grid - Minimalistic, Compact & Responsive */}
-      <div
-        className="metrics-grid"
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-          gap: '0.875rem',
-        }}
-      >
-        <MetricCard
-          compact
-          title="Total Applications"
-          value={stats.totalApps}
-          icon={FileText}
-          variant="primary"
-          trend={`${stats.applied} In Review`}
-        />
-        <MetricCard
-          compact
-          title="Shortlisted Drives"
-          value={stats.shortlisted}
-          icon={Briefcase}
-          variant="warning"
-          trend="Advanced to rounds"
-        />
-        <MetricCard
-          compact
-          title="Upcoming Interviews"
-          value={stats.upcomingInterviewsCount}
-          icon={CalendarCheck}
-          variant="info"
-          trend={stats.nextInterview ? `Next: ${formatDate(stats.nextInterview.interviewDate)}` : 'No upcoming slots'}
-        />
-        <MetricCard
-          compact
-          title="Placement Outcome"
-          value={stats.isPlaced ? 'Placed' : 'In Progress'}
-          icon={Award}
-          variant={stats.isPlaced ? 'success' : 'neutral'}
-          trend={
-            stats.activePlacement
-              ? `${stats.activePlacement.company?.companyName || 'Corporate Offer'}`
-              : `${stats.totalApps} submitted`
-          }
-        />
-      </div>
-
-      {/* 3. Placement Offer Status Callout - Minimalistic */}
+      {/* 2. "What's Next" Priority Card */}
       {stats.isPlaced && stats.activePlacement ? (
-        <Card
-          style={{
-            border: '1.5px solid rgba(16, 185, 129, 0.4)',
-            backgroundColor: 'rgba(16, 185, 129, 0.05)',
-            boxShadow: 'var(--shadow-xs)',
-          }}
-        >
-          <CardBody style={{ padding: '0.9rem 1.25rem' }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
-                gap: '0.875rem',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+        <Card style={{ borderLeft: '4px solid var(--color-success)' }}>
+          <CardBody style={{ padding: 'var(--space-5)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
                 <div
                   style={{
-                    width: '2.5rem',
-                    height: '2.5rem',
-                    borderRadius: '50%',
-                    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                    color: '#10B981',
+                    width: '40px',
+                    height: '40px',
+                    borderRadius: 'var(--radius-md)',
+                    backgroundColor: 'var(--color-success-bg)',
+                    color: 'var(--color-success)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     flexShrink: 0,
                   }}
+                  aria-hidden="true"
                 >
-                  <Award size={22} />
+                  <Award size={22} strokeWidth={1.75} />
                 </div>
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.15rem' }}>
-                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#10B981', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                      Official Placement Offer Verified
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: '2px' }}>
+                    <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--color-success-text)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Official Offer Received
                     </span>
-                    <CheckCircle size={14} style={{ color: '#10B981' }} />
                   </div>
-                  <h3 style={{ margin: '0 0 0.2rem 0', fontSize: '1.1rem', fontWeight: 800 }}>
-                    Placed at {stats.activePlacement.company?.companyName}
+                  <h3 style={{ margin: 0, fontSize: 'var(--text-md)', fontWeight: 600 }}>
+                    {stats.activePlacement.company?.companyName || 'Corporate Partner'} — {stats.activePlacement.job?.jobTitle || 'Placement Role'}
                   </h3>
-                  <div style={{ fontSize: '0.825rem', color: 'var(--color-text-secondary)', display: 'flex', flexWrap: 'wrap', gap: '0.6rem' }}>
-                    <span>Role: <strong>{stats.activePlacement.job?.jobTitle || 'Graduate Trainee'}</strong></span>
-                    <span>•</span>
-                    <span>Package: <strong style={{ color: 'var(--color-text-primary)' }}>{formatSalary(stats.activePlacement.packageAmount)}</strong></span>
-                    {stats.activePlacement.placementDate && (
-                      <>
-                        <span>•</span>
-                        <span>Offer Date: {formatDate(stats.activePlacement.placementDate)}</span>
-                      </>
-                    )}
-                  </div>
+                  <p style={{ margin: '2px 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
+                    Package: {formatSalary(stats.activePlacement.packageAmount || stats.activePlacement.package)} • Joining {formatDate(stats.activePlacement.joiningDate)}
+                  </p>
                 </div>
               </div>
 
               <Link to="/my-placement" style={{ textDecoration: 'none' }}>
                 <Button variant="primary" size="sm">
-                  View Full Offer Details
-                  <ArrowRight size={14} />
+                  <span>View Offer Letter</span>
+                  <ArrowRight size={14} strokeWidth={1.75} />
+                </Button>
+              </Link>
+            </div>
+          </CardBody>
+        </Card>
+      ) : stats.nextInterview ? (
+        <Card style={{ borderLeft: isInterviewToday ? '4px solid var(--color-warning)' : '4px solid var(--color-info)' }}>
+          <CardBody style={{ padding: 'var(--space-5)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
+                {/* Date Block */}
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '52px',
+                    height: '52px',
+                    borderRadius: 'var(--radius-md)',
+                    backgroundColor: 'var(--color-surface-hover)',
+                    border: '1px solid var(--color-border)',
+                    fontVariantNumeric: 'tabular-nums',
+                    flexShrink: 0,
+                  }}
+                >
+                  <span style={{ fontSize: 'var(--text-md)', fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                    {nextInterviewDate ? nextInterviewDate.getDate() : '—'}
+                  </span>
+                  <span style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--color-text-muted)', fontWeight: 600 }}>
+                    {nextInterviewDate ? nextInterviewDate.toLocaleString('default', { month: 'short' }) : ''}
+                  </span>
+                </div>
+
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: '2px' }}>
+                    <CategoryTag>{stats.nextInterview.roundType || `Round ${stats.nextInterview.roundNumber}`}</CategoryTag>
+                    {isInterviewToday ? (
+                      <span className="badge badge-warning">Today</span>
+                    ) : (
+                      <span className="badge badge-info">Upcoming</span>
+                    )}
+                  </div>
+                  <h3 style={{ margin: 0, fontSize: 'var(--text-md)', fontWeight: 600 }}>
+                    {stats.nextInterview.job?.company?.companyName || 'Recruiting Company'} — {stats.nextInterview.job?.jobTitle || 'Role'}
+                  </h3>
+                  <p style={{ margin: '2px 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
+                    Scheduled for {formatDate(stats.nextInterview.interviewDate)}
+                  </p>
+                </div>
+              </div>
+
+              <Link to="/my-interviews" style={{ textDecoration: 'none' }}>
+                <Button variant="secondary" size="sm">
+                  <span>Interview Details</span>
+                  <ArrowRight size={14} strokeWidth={1.75} />
                 </Button>
               </Link>
             </div>
           </CardBody>
         </Card>
       ) : (
-        <Card style={{ backgroundColor: 'var(--color-surface)', boxShadow: 'var(--shadow-xs)' }}>
-          <CardBody style={{ padding: '0.9rem 1.25rem' }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
-                gap: '0.875rem',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-                <div
-                  style={{
-                    width: '2.5rem',
-                    height: '2.5rem',
-                    borderRadius: 'var(--radius-md)',
-                    backgroundColor: 'var(--color-primary-subtle)',
-                    color: 'var(--color-primary)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <TrendingUp size={20} />
-                </div>
+        <Card>
+          <CardBody style={{ padding: 'var(--space-5)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                <CalendarClock size={20} strokeWidth={1.75} style={{ color: 'var(--color-text-muted)' }} />
                 <div>
-                  <h3 style={{ margin: '0 0 0.15rem 0', fontSize: '1rem', fontWeight: 700 }}>
-                    Campus Recruitment Drive In Progress
+                  <h3 style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                    No interviews scheduled at this time
                   </h3>
-                  <p style={{ margin: 0, fontSize: '0.825rem', color: 'var(--color-text-secondary)' }}>
-                    {applications.length > 0
-                      ? `You have ${applications.length} active application(s) under review. Keep track of shortlist announcements and interview calls.`
-                      : 'You have not submitted any applications yet. Explore verified corporate recruitment drives and apply now!'}
+                  <p style={{ margin: '2px 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
+                    Explore verified campus drives and apply to active job listings.
                   </p>
                 </div>
               </div>
 
               <Link to="/jobs" style={{ textDecoration: 'none' }}>
-                <Button variant="primary" size="sm">
-                  Browse Active Job Drives
-                  <ArrowRight size={14} />
+                <Button variant="secondary" size="sm">
+                  <span>Browse Open Jobs</span>
+                  <ArrowRight size={14} strokeWidth={1.75} />
                 </Button>
               </Link>
             </div>
@@ -428,252 +332,220 @@ export function StudentDashboardPage() {
         </Card>
       )}
 
-      {/* 4. Two-Column Dashboard Overview */}
+      {/* 3. Metric Strip (Compact) */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
-          gap: '1.5rem',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: 'var(--space-4)',
         }}
       >
-        {/* Left Column: Recent Applications */}
-        <Card>
-          <CardHeader>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                <FileText size={18} style={{ color: 'var(--color-primary)' }} />
-                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>My Applications</h3>
-              </div>
-              <Link to="/my-applications" style={{ textDecoration: 'none' }}>
-                <span
-                  style={{
-                    fontSize: '0.8rem',
-                    fontWeight: 600,
-                    color: 'var(--color-primary)',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '0.25rem',
-                  }}
-                >
-                  View All ({applications.length})
-                  <ArrowRight size={13} />
-                </span>
-              </Link>
-            </div>
-          </CardHeader>
-          <CardBody>
-            {/* Status Breakdown Pills */}
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(4, 1fr)',
-                gap: '0.5rem',
-                marginBottom: '1rem',
-                padding: '0.6rem',
-                borderRadius: 'var(--radius-md)',
-                backgroundColor: 'var(--color-surface-hover)',
-              }}
-            >
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--color-info, #3B82F6)' }}>{stats.applied}</div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>Applied</div>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--color-warning, #F59E0B)' }}>{stats.shortlisted}</div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>Shortlisted</div>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--color-success, #10B981)' }}>{stats.selected}</div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>Selected</div>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--color-danger, #EF4444)' }}>{stats.rejected}</div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>Rejected</div>
-              </div>
-            </div>
-
-            {applications.length === 0 ? (
-              <EmptyState
-                icon={FileText}
-                title="No Applications Yet"
-                description="Explore current campus job openings and submit your first application."
-                action={
-                  <Link to="/jobs">
-                    <Button variant="primary" size="sm">Browse Jobs</Button>
-                  </Link>
-                }
-              />
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {applications.slice(0, 4).map((app) => (
-                  <div
-                    key={app.applicationId}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      padding: '0.75rem',
-                      borderRadius: 'var(--radius-md)',
-                      border: '1px solid var(--color-border)',
-                      backgroundColor: 'var(--color-surface)',
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.2rem' }}>
-                        {app.job?.jobTitle || 'Job Opening'}
-                      </div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <Building2 size={13} />
-                        <span>{app.job?.company?.companyName || 'Company'}</span>
-                        <span>•</span>
-                        <span>{formatDate(app.applicationDate)}</span>
-                      </div>
-                    </div>
-                    <div>
-                      <StatusBadge status={app.status} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardBody>
-        </Card>
-
-        {/* Right Column: Upcoming & Recent Interviews */}
-        <Card>
-          <CardHeader>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                <CalendarCheck size={18} style={{ color: 'var(--color-primary)' }} />
-                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>My Interviews</h3>
-              </div>
-              <Link to="/my-interviews" style={{ textDecoration: 'none' }}>
-                <span
-                  style={{
-                    fontSize: '0.8rem',
-                    fontWeight: 600,
-                    color: 'var(--color-primary)',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '0.25rem',
-                  }}
-                >
-                  View All ({interviews.length})
-                  <ArrowRight size={13} />
-                </span>
-              </Link>
-            </div>
-          </CardHeader>
-          <CardBody>
-            {/* Next Interview Highlight (if any) */}
-            {stats.nextInterview && (
-              <div
-                style={{
-                  padding: '0.85rem 1rem',
-                  borderRadius: 'var(--radius-md)',
-                  backgroundColor: 'rgba(59, 130, 246, 0.08)',
-                  border: '1px solid rgba(59, 130, 246, 0.25)',
-                  marginBottom: '1rem',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--color-info, #3B82F6)', fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase' }}>
-                  <Clock size={14} />
-                  <span>Next Scheduled Round</span>
-                </div>
-                <div style={{ fontWeight: 700, fontSize: '0.95rem', marginTop: '0.2rem' }}>
-                  Round {stats.nextInterview.roundNumber}: {stats.nextInterview.roundType} Interview
-                </div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', marginTop: '0.2rem' }}>
-                  {stats.nextInterview.application?.job?.company?.companyName} • {formatDate(stats.nextInterview.interviewDate)}
-                </div>
-              </div>
-            )}
-
-            {interviews.length === 0 ? (
-              <EmptyState
-                icon={CalendarCheck}
-                title="No Interviews Scheduled"
-                description="Once partner companies evaluate and shortlist your applications, your interview schedules will appear here."
-              />
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {interviews.slice(0, 4).map((interview) => (
-                  <div
-                    key={interview.interviewId}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      padding: '0.75rem',
-                      borderRadius: 'var(--radius-md)',
-                      border: '1px solid var(--color-border)',
-                      backgroundColor: 'var(--color-surface)',
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.2rem' }}>
-                        Round {interview.roundNumber}: {interview.roundType}
-                      </div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <span>{interview.application?.job?.company?.companyName || 'Corporate Partner'}</span>
-                        <span>•</span>
-                        <Calendar size={13} />
-                        <span>{formatDate(interview.interviewDate)}</span>
-                      </div>
-                    </div>
-                    <div>
-                      <StatusBadge status={interview.result || 'Pending'} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardBody>
-        </Card>
+        <MetricCard
+          compact
+          title="Applications"
+          value={stats.totalApps}
+          icon={FileText}
+          context={`${stats.applied} Under Review`}
+        />
+        <MetricCard
+          compact
+          title="Shortlisted"
+          value={stats.shortlisted}
+          icon={Briefcase}
+          variant="warning"
+          context={`${stats.selected} Selected`}
+        />
+        <MetricCard
+          compact
+          title="Interviews"
+          value={stats.upcomingInterviewsCount}
+          icon={CalendarClock}
+          variant="info"
+          context={stats.upcomingInterviewsCount > 0 ? 'Action required' : 'Clear schedule'}
+        />
+        <MetricCard
+          compact
+          title="Active Backlogs"
+          value={stats.backlogs}
+          icon={Award}
+          variant={stats.backlogs > 0 ? 'danger' : 'success'}
+          context={stats.backlogs === 0 ? 'Academic clear' : 'Policy constraint'}
+        />
       </div>
 
-      {/* 5. Portal Quick Navigation Actions */}
+      {/* 4. Active Applications Funnel Table */}
       <Card>
-        <CardBody>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
-              Quick Navigation Shortcuts:
-            </span>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-              <Link to="/my-applications" style={{ textDecoration: 'none' }}>
-                <Button variant="secondary" size="sm">
-                  <FileText size={15} />
-                  My Applications
-                </Button>
-              </Link>
-              <Link to="/my-interviews" style={{ textDecoration: 'none' }}>
-                <Button variant="secondary" size="sm">
-                  <CalendarCheck size={15} />
-                  My Interviews
-                </Button>
-              </Link>
-              <Link to="/my-placement" style={{ textDecoration: 'none' }}>
-                <Button variant="secondary" size="sm">
-                  <Award size={15} />
-                  My Placement
-                </Button>
-              </Link>
-              <Link to="/my-profile" style={{ textDecoration: 'none' }}>
-                <Button variant="secondary" size="sm">
-                  <User size={15} />
-                  My Profile
-                </Button>
-              </Link>
-              <Link to="/jobs" style={{ textDecoration: 'none' }}>
-                <Button variant="primary" size="sm">
-                  <Briefcase size={15} />
-                  Explore Jobs
-                </Button>
-              </Link>
+        <CardHeader
+          title="Recent Applications"
+          subtitle="Your submission pipeline and selection rounds"
+          action={
+            <Link to="/my-applications" style={{ textDecoration: 'none' }}>
+              <Button variant="ghost" size="sm">
+                <span>View All ({applications.length})</span>
+                <ArrowRight size={14} strokeWidth={1.75} />
+              </Button>
+            </Link>
+          }
+        />
+        <CardBody style={{ padding: 0 }}>
+          {applications.length === 0 ? (
+            <EmptyState
+              icon={FileText}
+              title="No applications submitted yet"
+              description="Browse open campus drives and submit your profile for available roles."
+              actionText="Browse Jobs"
+              actionIcon={Briefcase}
+              onAction={() => {}}
+            />
+          ) : (
+            <div className="table-container" style={{ border: 'none', borderRadius: 0, boxShadow: 'none' }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Job & Company</th>
+                    <th>Compensation</th>
+                    <th>Date Applied</th>
+                    <th>Progress Funnel</th>
+                    <th style={{ textAlign: 'right' }}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {applications.slice(0, 5).map((app) => {
+                    const isShortlisted = app.status === 'SHORTLISTED' || app.status === 'SELECTED';
+                    const isDecision = app.status === 'SELECTED' || app.status === 'REJECTED';
+
+                    return (
+                      <tr key={app.applicationId}>
+                        <td>
+                          <div className="cell-primary">
+                            <span className="cell-title">{app.job?.jobTitle || `Job #${app.jobId}`}</span>
+                            <span className="cell-subtitle">{app.job?.company?.companyName || 'Corporate Partner'}</span>
+                          </div>
+                        </td>
+                        <td className="col-numeric">
+                          {formatSalary(app.job?.packageAmount || app.job?.package)}
+                        </td>
+                        <td>{formatDate(app.applicationDate)}</td>
+                        <td>
+                          {/* Mini Stepper (Applied -> Shortlisted -> Selected/Rejected) */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }} title={`Stage: ${app.status}`}>
+                            <span
+                              style={{
+                                width: '18px',
+                                height: '18px',
+                                borderRadius: '50%',
+                                backgroundColor: 'var(--color-primary-600)',
+                                color: '#FFFFFF',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '10px',
+                              }}
+                              aria-hidden="true"
+                            >
+                              <Check size={11} strokeWidth={2.5} />
+                            </span>
+                            <span style={{ width: '16px', height: '2px', backgroundColor: isShortlisted ? 'var(--color-primary-600)' : 'var(--color-border)' }} />
+                            <span
+                              style={{
+                                width: '18px',
+                                height: '18px',
+                                borderRadius: '50%',
+                                backgroundColor: isShortlisted ? 'var(--color-primary-600)' : 'var(--color-surface)',
+                                border: `2px solid ${isShortlisted ? 'var(--color-primary-600)' : 'var(--color-border-strong)'}`,
+                                color: isShortlisted ? '#FFFFFF' : 'var(--color-text-muted)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '10px',
+                              }}
+                              aria-hidden="true"
+                            >
+                              {isShortlisted ? <Check size={11} strokeWidth={2.5} /> : '2'}
+                            </span>
+                            <span style={{ width: '16px', height: '2px', backgroundColor: isDecision ? 'var(--color-primary-600)' : 'var(--color-border)' }} />
+                            <span
+                              style={{
+                                width: '18px',
+                                height: '18px',
+                                borderRadius: '50%',
+                                backgroundColor: app.status === 'SELECTED' ? 'var(--color-success)' : app.status === 'REJECTED' ? 'var(--color-danger)' : 'var(--color-surface)',
+                                border: `2px solid ${isDecision ? (app.status === 'SELECTED' ? 'var(--color-success)' : 'var(--color-danger)') : 'var(--color-border-strong)'}`,
+                                color: isDecision ? '#FFFFFF' : 'var(--color-text-muted)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '10px',
+                              }}
+                              aria-hidden="true"
+                            >
+                              {isDecision ? <Check size={11} strokeWidth={2.5} /> : '3'}
+                            </span>
+                          </div>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <StatusBadge status={app.status} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-          </div>
+          )}
         </CardBody>
       </Card>
+
+      {/* 5. Quick Links */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+          gap: 'var(--space-4)',
+        }}
+      >
+        <Link to="/jobs" style={{ textDecoration: 'none' }}>
+          <div className="card card-interactive" style={{ padding: 'var(--space-5)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                <div className="metric-card-icon-wrap" aria-hidden="true">
+                  <Briefcase size={18} strokeWidth={1.75} />
+                </div>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                    Browse Open Jobs
+                  </h4>
+                  <p style={{ margin: '2px 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
+                    Check eligibility and apply to recruitment drives
+                  </p>
+                </div>
+              </div>
+              <ArrowRight size={16} strokeWidth={1.75} style={{ color: 'var(--color-text-muted)' }} />
+            </div>
+          </div>
+        </Link>
+
+        <Link to="/my-profile" style={{ textDecoration: 'none' }}>
+          <div className="card card-interactive" style={{ padding: 'var(--space-5)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                <div className="metric-card-icon-wrap" aria-hidden="true">
+                  <UserCircle size={18} strokeWidth={1.75} />
+                </div>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                    View My Profile
+                  </h4>
+                  <p style={{ margin: '2px 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
+                    Verify academic records, CGPA, and contact details
+                  </p>
+                </div>
+              </div>
+              <ArrowRight size={16} strokeWidth={1.75} style={{ color: 'var(--color-text-muted)' }} />
+            </div>
+          </div>
+        </Link>
+      </div>
     </div>
   );
 }
