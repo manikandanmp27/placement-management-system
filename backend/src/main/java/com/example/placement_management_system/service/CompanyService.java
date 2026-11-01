@@ -2,6 +2,7 @@ package com.example.placement_management_system.service;
 
 import com.example.placement_management_system.entity.Company;
 import com.example.placement_management_system.repository.CompanyRepository;
+import com.example.placement_management_system.security.SecurityUtils;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -28,6 +29,7 @@ public class CompanyService {
     }
 
     public void deleteCompany(Integer id) {
+        SecurityUtils.validateNotDemo("Company deletion");
         companyRepository.deleteById(id);
     }
 }

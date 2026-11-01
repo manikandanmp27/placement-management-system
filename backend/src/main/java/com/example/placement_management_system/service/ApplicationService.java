@@ -112,6 +112,7 @@ public class ApplicationService {
         if (SecurityUtils.isStudent()) {
             throw new AccessDeniedException("Access denied: Students cannot delete application records");
         }
+        SecurityUtils.validateNotDemo("Application deletion");
         applicationRepository.deleteById(id);
     }
 }

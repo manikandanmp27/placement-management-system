@@ -32,6 +32,29 @@ export function AuthProvider({ children }) {
         email: data.email,
         role: data.role,
         studentId: data.studentId,
+        isDemo: data.isDemo || data.email?.toLowerCase().startsWith('demo.'),
+      };
+      setUser(fallbackUser);
+      return fallbackUser;
+    }
+  }, []);
+
+  const demoLogin = useCallback(async (role) => {
+    const data = await authApi.demoLogin(role);
+    setStoredToken(data.token);
+    setToken(data.token);
+
+    try {
+      const profile = await authApi.getProfile();
+      setUser(profile);
+      return profile;
+    } catch {
+      const fallbackUser = {
+        userId: data.userId,
+        email: data.email,
+        role: data.role,
+        studentId: data.studentId,
+        isDemo: true,
       };
       setUser(fallbackUser);
       return fallbackUser;
@@ -109,8 +132,10 @@ export function AuthProvider({ children }) {
     isStudent: user?.role === 'ROLE_STUDENT',
     isOfficer: user?.role === 'ROLE_PLACEMENT_OFFICER',
     isAdmin: user?.role === 'ROLE_ADMIN',
+    isDemo: Boolean(user?.isDemo || user?.email?.toLowerCase().startsWith('demo.')),
     hasRole: (roles) => (roles && user?.role ? roles.includes(user.role) : false),
     login,
+    demoLogin,
     register,
     logout,
   };

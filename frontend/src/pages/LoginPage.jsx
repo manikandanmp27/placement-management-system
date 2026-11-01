@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation, Navigate, Link } from 'react-router-dom';
-import { GraduationCap, Lock, Mail, AlertCircle, Loader2, Sun, Moon } from 'lucide-react';
+import { GraduationCap, Lock, Mail, AlertCircle, Loader2, Sun, Moon, User, Briefcase } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 
 export function LoginPage() {
-  const { login, isAuthenticated } = useAuth();
+  const { login, demoLogin, isAuthenticated } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
@@ -15,6 +15,7 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [demoLoadingRole, setDemoLoadingRole] = useState(null);
 
   const from = location.state?.from?.pathname || '/';
 
@@ -49,6 +50,23 @@ export function LoginPage() {
       setError(message);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleDemoLogin = async (role) => {
+    setError(null);
+    setDemoLoadingRole(role);
+    try {
+      await demoLogin(role);
+      navigate('/', { replace: true });
+    } catch (err) {
+      const message =
+        err?.data?.message ||
+        err?.message ||
+        'Demo login failed. Please verify the backend service is running.';
+      setError(message);
+    } finally {
+      setDemoLoadingRole(null);
     }
   };
 
@@ -224,9 +242,112 @@ export function LoginPage() {
           </button>
         </form>
 
+        {/* Secondary Demo Login Section */}
         <div
           style={{
-            marginTop: 'var(--space-6)',
+            display: 'flex',
+            alignItems: 'center',
+            margin: 'var(--space-6) 0 var(--space-4)',
+            gap: 'var(--space-3)',
+          }}
+        >
+          <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--color-border-subtle)' }} />
+          <span
+            style={{
+              fontSize: 'var(--text-xs)',
+              fontWeight: 600,
+              color: 'var(--color-text-muted)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+            }}
+          >
+            Or explore with demo access
+          </span>
+          <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--color-border-subtle)' }} />
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 'var(--space-3)',
+            marginBottom: 'var(--space-3)',
+          }}
+        >
+          <button
+            type="button"
+            id="demo-student-btn"
+            className="btn btn-secondary"
+            onClick={() => handleDemoLogin('STUDENT')}
+            disabled={isSubmitting || !!demoLoadingRole}
+            style={{
+              height: '42px',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 'var(--space-2)',
+            }}
+          >
+            {demoLoadingRole === 'STUDENT' ? (
+              <>
+                <Loader2 size={14} strokeWidth={2} style={{ animation: 'spin 1s linear infinite' }} />
+                <span>Loading…</span>
+              </>
+            ) : (
+              <>
+                <User size={14} strokeWidth={1.75} />
+                <span>Try Student Demo</span>
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            id="demo-officer-btn"
+            className="btn btn-secondary"
+            onClick={() => handleDemoLogin('OFFICER')}
+            disabled={isSubmitting || !!demoLoadingRole}
+            style={{
+              height: '42px',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 'var(--space-2)',
+            }}
+          >
+            {demoLoadingRole === 'OFFICER' ? (
+              <>
+                <Loader2 size={14} strokeWidth={2} style={{ animation: 'spin 1s linear infinite' }} />
+                <span>Loading…</span>
+              </>
+            ) : (
+              <>
+                <Briefcase size={14} strokeWidth={1.75} />
+                <span>Try Officer Demo</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        <p
+          style={{
+            fontSize: 'var(--text-xs)',
+            color: 'var(--color-text-muted)',
+            textAlign: 'center',
+            margin: '0 0 var(--space-2)',
+            lineHeight: 1.4,
+          }}
+        >
+          Demo accounts use sample data. Changes may be reset.
+        </p>
+
+        <div
+          style={{
+            marginTop: 'var(--space-5)',
             textAlign: 'center',
             fontSize: 'var(--text-sm)',
           }}

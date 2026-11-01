@@ -46,4 +46,21 @@ public final class SecurityUtils {
             throw new AccessDeniedException(message != null ? message : "Access denied: Unauthorized access to student data");
         }
     }
+
+    public static boolean isDemoUser() {
+        CustomUserDetails user = getCurrentUserDetails();
+        if (user == null || user.getUsername() == null) {
+            return false;
+        }
+        String username = user.getUsername().toLowerCase();
+        return username.startsWith("demo.") || username.contains("demo_");
+    }
+
+    public static void validateNotDemo(String actionMessage) {
+        if (isDemoUser()) {
+            throw new AccessDeniedException(
+                    "Action restricted: " + (actionMessage != null ? actionMessage : "This action")
+                            + " is disabled in Demo Mode to protect shared sample data.");
+        }
+    }
 }

@@ -215,6 +215,7 @@ public class StudentService {
         if (SecurityUtils.isStudent()) {
             throw new AccessDeniedException("Access denied: Students cannot archive academic records");
         }
+        SecurityUtils.validateNotDemo("Student archiving");
         if (id == null || id <= 0) {
             throw new IllegalArgumentException("Valid positive Student ID is required");
         }
@@ -242,6 +243,7 @@ public class StudentService {
         if (SecurityUtils.isStudent()) {
             throw new AccessDeniedException("Access denied: Students cannot unarchive academic records");
         }
+        SecurityUtils.validateNotDemo("Student unarchiving");
         if (id == null || id <= 0) {
             throw new IllegalArgumentException("Valid positive Student ID is required");
         }
@@ -269,6 +271,7 @@ public class StudentService {
         if (SecurityUtils.isStudent()) {
             throw new AccessDeniedException("Access denied: Students cannot delete academic records");
         }
+        SecurityUtils.validateNotDemo("Student deletion");
         if (id == null || id <= 0) {
             throw new IllegalArgumentException("Valid positive Student ID is required");
         }

@@ -52,8 +52,9 @@ public class AuthService {
 
         Integer studentId = user.getStudent() != null ? user.getStudent().getStudentId() : null;
         String token = jwtService.generateToken(user.getEmail(), user.getUserId(), user.getRole(), studentId);
+        boolean isDemo = normalizedEmail.startsWith("demo.");
 
-        return new AuthResponse(token, "Bearer", user.getUserId(), user.getEmail(), user.getRole(), studentId);
+        return new AuthResponse(token, "Bearer", user.getUserId(), user.getEmail(), user.getRole(), studentId, isDemo);
     }
 
     @Transactional
@@ -94,7 +95,7 @@ public class AuthService {
 
         String token = jwtService.generateToken(user.getEmail(), user.getUserId(), user.getRole(), student.getStudentId());
 
-        return new AuthResponse(token, "Bearer", user.getUserId(), user.getEmail(), user.getRole(), student.getStudentId());
+        return new AuthResponse(token, "Bearer", user.getUserId(), user.getEmail(), user.getRole(), student.getStudentId(), false);
     }
 
     public UserProfileResponse getUserProfileByEmail(String email) {
@@ -104,12 +105,14 @@ public class AuthService {
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
         Integer studentId = user.getStudent() != null ? user.getStudent().getStudentId() : null;
+        boolean isDemo = normalizedEmail.startsWith("demo.");
         return new UserProfileResponse(
                 user.getUserId(),
                 user.getEmail(),
                 user.getRole(),
                 studentId,
                 user.isEnabled(),
-                user.getCreatedAt());
+                user.getCreatedAt(),
+                isDemo);
     }
 }

@@ -2,6 +2,7 @@ import React from 'react';
 import { AlertTriangle, AlertCircle, Info } from 'lucide-react';
 import Modal from './Modal';
 import Button from './Button';
+import { useAuth } from '../../contexts/AuthContext';
 
 export function ConfirmDialog({
   isOpen,
@@ -15,7 +16,16 @@ export function ConfirmDialog({
   isBlocked = false,
   blockedReason = '',
 }) {
+  const auth = useAuth();
+  const isDemo = Boolean(auth?.isDemo);
   const isDanger = confirmVariant === 'danger';
+
+  const effectiveBlocked = isBlocked || (isDemo && isDanger);
+  const effectiveBlockedReason =
+    blockedReason ||
+    (isDemo && isDanger
+      ? 'Record deletion is disabled in Demo Mode to protect shared sample data for all evaluators.'
+      : '');
 
   const renderIcon = () => {
     if (isDanger) {
@@ -93,7 +103,7 @@ export function ConfirmDialog({
             variant={confirmVariant}
             onClick={onConfirm}
             isLoading={isLoading}
-            disabled={isBlocked || isLoading}
+            disabled={effectiveBlocked || isLoading}
           >
             {confirmText}
           </Button>
@@ -107,12 +117,12 @@ export function ConfirmDialog({
             {message}
           </p>
 
-          {isBlocked && blockedReason && (
+          {effectiveBlocked && effectiveBlockedReason && (
             <div className="alert alert-warning" style={{ marginTop: 'var(--space-3)', fontSize: 'var(--text-xs)' }} role="alert">
               <AlertTriangle size={16} strokeWidth={1.75} style={{ flexShrink: 0, marginTop: '2px' }} />
               <div>
-                <strong>Action unavailable: </strong>
-                {blockedReason}
+                <strong>Action restricted: </strong>
+                {effectiveBlockedReason}
               </div>
             </div>
           )}

@@ -208,7 +208,9 @@ export function Sidebar({ isCollapsed, onToggleCollapse, isMobileOpen, onCloseMo
                 <span className="profile-name" title={user?.email || 'User'}>
                   {user?.email || 'Authenticated User'}
                 </span>
-                <span className="profile-role">{formatRole(user?.role)}</span>
+                <span className="profile-role">
+                  {user?.isDemo ? `Demo • ${formatRole(user?.role)}` : formatRole(user?.role)}
+                </span>
               </div>
             )}
           </div>

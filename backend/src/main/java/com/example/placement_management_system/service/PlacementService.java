@@ -52,6 +52,7 @@ public class PlacementService {
     }
 
     public void deletePlacement(Integer id) {
+        SecurityUtils.validateNotDemo("Placement deletion");
         placementRepository.deleteById(id);
     }
 }

@@ -109,6 +109,7 @@ public class DepartmentService {
     @Transactional
     public void deleteDepartment(Integer id) {
         validateStaffAccess("delete departments");
+        SecurityUtils.validateNotDemo("Department deletion");
 
         Department existingDept = departmentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Department not found with ID: " + id));

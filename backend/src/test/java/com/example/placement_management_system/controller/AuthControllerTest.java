@@ -2,11 +2,13 @@ package com.example.placement_management_system.controller;
 
 import com.example.placement_management_system.dto.AuthRequest;
 import com.example.placement_management_system.dto.AuthResponse;
+import com.example.placement_management_system.dto.DemoLoginRequest;
 import com.example.placement_management_system.dto.RegisterStudentRequest;
 import com.example.placement_management_system.dto.UserProfileResponse;
 import com.example.placement_management_system.entity.Role;
 import com.example.placement_management_system.exception.GlobalExceptionHandler;
 import com.example.placement_management_system.service.AuthService;
+import com.example.placement_management_system.service.DemoAccountService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -35,12 +37,15 @@ class AuthControllerTest {
     @Mock
     private AuthService authService;
 
+    @Mock
+    private DemoAccountService demoAccountService;
+
     private MockMvc mockMvc;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
     void setUp() {
-        AuthController authController = new AuthController(authService);
+        AuthController authController = new AuthController(authService, demoAccountService);
         this.mockMvc = MockMvcBuilders.standaloneSetup(authController)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -182,5 +187,35 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.studentId").value(101))
                 .andExpect(jsonPath("$.password").doesNotExist())
                 .andExpect(jsonPath("$.passwordHash").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("POST /api/auth/demo-login returns token and isDemo=true for valid demo role")
+    void demoLoginSuccess() throws Exception {
+        AuthResponse response = new AuthResponse("mock-demo-token", "Bearer", 99, "demo.student@campushire.edu", Role.ROLE_STUDENT, 999, true);
+        when(demoAccountService.demoLogin("STUDENT")).thenReturn(response);
+
+        DemoLoginRequest request = new DemoLoginRequest("STUDENT");
+
+        mockMvc.perform(post("/api/auth/demo-login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").value("mock-demo-token"))
+                .andExpect(jsonPath("$.email").value("demo.student@campushire.edu"))
+                .andExpect(jsonPath("$.role").value("ROLE_STUDENT"))
+                .andExpect(jsonPath("$.studentId").value(999))
+                .andExpect(jsonPath("$.isDemo").value(true));
+    }
+
+    @Test
+    @DisplayName("POST /api/auth/demo-login returns 400 when role is blank")
+    void demoLoginBlankRole() throws Exception {
+        DemoLoginRequest request = new DemoLoginRequest("");
+
+        mockMvc.perform(post("/api/auth/demo-login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
     }
 }

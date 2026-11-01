@@ -136,6 +136,7 @@ public class InterviewService {
         if (SecurityUtils.isStudent()) {
             throw new AccessDeniedException("Access denied: Students cannot delete interview records");
         }
+        SecurityUtils.validateNotDemo("Interview deletion");
         interviewRepository.deleteById(id);
     }
 }

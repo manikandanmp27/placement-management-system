@@ -135,6 +135,34 @@ export function TopHeader({ onOpenMobile }) {
           </span>
         )}
 
+        {/* Demo Mode Badge */}
+        {user?.isDemo && (
+          <span
+            className="category-tag"
+            style={{
+              backgroundColor: 'var(--color-primary-50)',
+              color: 'var(--color-primary-800)',
+              borderColor: 'var(--color-primary-300)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontWeight: 600,
+            }}
+            title="Demo Mode: Sample data active. Deletion actions are restricted."
+          >
+            <span
+              style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                backgroundColor: 'var(--color-primary-600)',
+                display: 'inline-block',
+              }}
+            />
+            Demo Mode
+          </span>
+        )}
+
         {/* User Account Popover Menu */}
         {user && (
           <div className="account-menu-container" ref={accountRef}>
@@ -159,8 +187,20 @@ export function TopHeader({ onOpenMobile }) {
                     {user.email}
                   </span>
                   <span className="account-dropdown-role">
-                    {formatRoleShort(user.role)} Account
+                    {user?.isDemo ? `Demo ${formatRoleShort(user.role)}` : `${formatRoleShort(user.role)} Account`}
                   </span>
+                  {user?.isDemo && (
+                    <span
+                      style={{
+                        fontSize: 'var(--text-xs)',
+                        color: 'var(--color-text-muted)',
+                        marginTop: '4px',
+                        display: 'block',
+                      }}
+                    >
+                      Sample data mode • Record deletion restricted
+                    </span>
+                  )}
                 </div>
 
                 <button

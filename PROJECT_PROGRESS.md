@@ -1091,7 +1091,32 @@ While H2 handles JPA entity schema creation (`create-drop`), validation, and sta
     - `npm run lint`: 0 errors.
     - `npm run build`: Exit code 0, bundled in 1.64s.
     - Browser subagent visual verification in both light and dark modes confirmed exact table header and cell alignment, smooth theme toggling, and rich warm-brown aesthetic presentation.
-- [ ] **Task 1.8: Migrate to Database Auto-Increment Keys (`GenerationType.IDENTITY`)**
+- [x] **Task 1.8: Student and Placement Officer Demo Login**
+  - **Status**: **COMPLETE** (2026-11-01)
+  - **Why**: Enable evaluators and visitors to immediately explore the system as either a Student or a Placement Officer directly from the Login page without creating accounts, exposing passwords in client code, or bypassing backend security.
+  - **Implementation**:
+    - **Architecture & Security**:
+      - Zero schema or DDL modifications required; leverages existing `app_user`, `student`, `application`, and `interview` tables.
+      - Server-side demo authentication endpoint: `POST /api/auth/demo-login` (accepts `{ "role": "STUDENT" | "OFFICER" }`).
+      - Strictly forbids `ADMIN` demo login (throws `AccessDeniedException` -> HTTP 403 Forbidden).
+      - Issues authentic cryptographic HMAC-SHA256 JWTs using existing `AuthService.login()` pipeline; passes real user IDs, roles, and `isDemo: true`.
+      - Added demo destruction protection guards (`SecurityUtils.validateNotDemo()`) in `StudentService` (archive/unarchive/delete), `CompanyService` (delete), `JobService` (delete), `ApplicationService` (delete), `InterviewService` (delete), `PlacementService` (delete), and `DepartmentService` (delete).
+      - Added idempotent startup provisioning via [DemoAccountInitializer.java](file:///e:/Github%20Repo/placement-management-system/backend/src/main/java/com/example/placement_management_system/config/DemoAccountInitializer.java) and [DemoAccountService.java](file:///e:/Github%20Repo/placement-management-system/backend/src/main/java/com/example/placement_management_system/service/DemoAccountService.java): seeds demo officer (`demo.officer@campushire.edu`) and realistic demo student candidate Rohan Verma (Roll #999, CSE, CGPA 8.85, 0 backlogs, 3 applications to TCS, Infosys, Accenture, and upcoming Technical/HR interview rounds).
+      - Configured environment properties in [application.properties](file:///e:/Github%20Repo/placement-management-system/backend/src/main/resources/application.properties) with production-ready defaults: `app.demo.enabled=${DEMO_ACCOUNTS_ENABLED:true}`, `app.demo.student.email`, `app.demo.officer.email`.
+    - **Frontend UI & User Experience**:
+      - Updated [LoginPage.jsx](file:///e:/Github%20Repo/placement-management-system/frontend/src/pages/LoginPage.jsx) with two secondary buttons: **Try Student Demo** and **Try Officer Demo**, matching the Warm-Brown palette in both Light and Dark modes.
+      - Included hairline divider `"Or explore with demo access"` and required disclaimer: *"Demo accounts use sample data. Changes may be reset."*
+      - Maintained normal credential sign-in without alteration.
+      - Added `demoLogin(role)` in [auth.js](file:///e:/Github%20Repo/placement-management-system/frontend/src/api/auth.js) and [AuthContext.jsx](file:///e:/Github%20Repo/placement-management-system/frontend/src/contexts/AuthContext.jsx); exposes `isDemo` flag.
+      - Added visual indicator in [TopHeader.jsx](file:///e:/Github%20Repo/placement-management-system/frontend/src/components/layout/TopHeader.jsx): renders a warm-brown **Demo Mode** pill badge and sample data notice in the account popover.
+      - Updated [Sidebar.jsx](file:///e:/Github%20Repo/placement-management-system/frontend/src/components/layout/Sidebar.jsx) to display `Demo • [Role]` in the profile card.
+      - Enhanced [ConfirmDialog.jsx](file:///e:/Github%20Repo/placement-management-system/frontend/src/components/common/ConfirmDialog.jsx) to intercept delete confirmations in demo mode, displaying an informative notice: *"Action restricted: Record deletion is disabled in Demo Mode to protect shared sample data for all evaluators."* with a disabled confirmation button.
+    - **Testing & Verification**:
+      - Backend: Added comprehensive unit and integration tests in [AuthControllerTest.java](file:///e:/Github%20Repo/placement-management-system/backend/src/test/java/com/example/placement_management_system/controller/AuthControllerTest.java) and [DemoLoginIntegrationTest.java](file:///e:/Github%20Repo/placement-management-system/backend/src/test/java/com/example/placement_management_system/security/DemoLoginIntegrationTest.java).
+      - Test suite passed with 152/152 tests green (0 failures, 0 errors).
+      - Frontend: Oxlint passed with 0 errors; Vite production build passed cleanly.
+      - End-to-end browser subagent verification verified Light/Dark themes, Student Portal landing with Rohan Verma's profile and applications, Officer Dashboard metrics, route protection against student navigating to officer pages, deletion lock in ConfirmDialog, and unaffected normal admin authentication.
+- [ ] **Task 1.9: Migrate to Database Auto-Increment Keys (`GenerationType.IDENTITY`)**
   - **Why**: Manual entry of numeric IDs during entity creation is error-prone and violates standard web architecture.
   - **Files**: [schema.sql](file:///e:/Github%20Repo/placement-management-system/database/schema.sql), all entity files in `backend/src/main/java/.../entity/`, frontend form inputs.
   - **Acceptance Criteria**: Forms omit manual ID entry; MySQL automatically generates sequence keys.
